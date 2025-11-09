@@ -34,7 +34,7 @@ MizanAiChunking/
 ```
 
 **Excluded from Git** (see [.gitignore](.gitignore)):
-- `chatbot/` - RAG chatbot system (excluded)
+- `chatlog/` - Chat conversation logs (excluded)
 - `ChunkingOutput/`, `Output/` - Generated output folders
 - `docs/`, `MD_FILES/`, `tests/`, `chunking_evaluation/`, `BaseFileForMD/` - Excluded project folders
 - `*.pdf`, `*.md` (except README.md) - Data files
@@ -361,9 +361,26 @@ This will:
 - Update your match_documents function to use the correct table name
 
 ### GitHub Security Alert - Exposed API Key
-- Never commit `.env` file or hardcode keys
-- Solution: Use environment variables for all credentials
-- Check `.gitignore` includes `.env` and sensitive files
+
+**If you see a GitHub security alert about an exposed API key:**
+
+The key was removed from the current codebase but still exists in git history. To fully resolve:
+
+1. **Revoke the exposed API key immediately:**
+   - Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
+   - Delete the exposed API key
+   - Generate a new API key
+
+2. **Update your `.env` file:**
+   - Replace the old key with the new key
+   - Verify `.env` is in `.gitignore` (it is by default)
+
+3. **GitHub will automatically close the alert** within 24-48 hours after detecting the key is revoked
+
+**Prevention:**
+- Never commit `.env` file or hardcode keys in code
+- Always use environment variables for all credentials
+- The `.gitignore` is already configured to exclude sensitive files
 
 ## Best Practices
 

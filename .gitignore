@@ -36,7 +36,7 @@ output/
 Output/
 
 # Project folders to exclude
-chatbot/
+chatlog/
 docs/
 MD_FILES/
 tests/
