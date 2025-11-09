@@ -9,17 +9,24 @@ and re-creates it with properly filtered chunks.
 import chromadb
 from text_chunking_methods import recursive_token_chunking, get_gemini_embeddings
 import uuid
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 def reset_collection():
     print("=" * 80)
     print("RESETTING CHROMADB COLLECTION")
     print("=" * 80)
 
-    # Initialize client
+    # Initialize client using environment variables
     client = chromadb.CloudClient(
-        api_key='ck-8PeJWvgo9YpuTWwwKPMNtCeKc77MkuZq2N8R31ryjHrh',
-        tenant='cc20128c-e79a-47f4-a0cd-ccd549e2f6a9',
-        database='DEV'
+        api_key=os.getenv('CHROMADB_API_KEY'),
+        tenant=os.getenv('CHROMADB_TENANT'),
+        database=os.getenv('CHROMADB_DATABASE')
     )
 
     collection_name = "my_gemini_collection"
