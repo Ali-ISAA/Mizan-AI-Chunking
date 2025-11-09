@@ -7,10 +7,8 @@ all using Google Gemini API for embeddings and LLM operations.
 
 Google API Configuration:
 -------------------------
-API Key: AIzaSyABM0dK6NCjVN7siU2dwxwY9aPnFhIwbTU
-Name: EMBEDDINGS
-Project: gen-lang-client-0837634806
-Project Number: 280248277567
+API Keys: Loaded from .env file (GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.)
+Model: embedding-001 (768 dimensions)
 
 Installation Requirements:
 --------------------------
