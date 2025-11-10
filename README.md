@@ -1,44 +1,88 @@
-# MizanAiChunking
+# MizanAI Chunking v2.0
 
-Advanced document chunking system with LLM-based semantic analysis and RAG chatbot capabilities. Supports both ChromaDB and Supabase vector databases with hybrid search (semantic + keyword).
+Advanced document chunking system with intelligent semantic analysis and multi-provider support. A modern, modular Python framework for document processing, embedding generation, and vector storage.
 
 ## Overview
 
-This project provides multiple intelligent document chunking methods, with a focus on LLM-based semantic chunking using Google Gemini. It includes a complete RAG (Retrieval-Augmented Generation) chatbot system with hybrid search capabilities.
+MizanAI Chunking is a comprehensive document processing pipeline that transforms raw documents into semantically meaningful chunks stored in vector databases. The system features a modular architecture with support for multiple LLM providers, embedding services, and vector stores.
+
+**Key Features:**
+- 7 different chunking strategies (fixed, recursive, cluster, kamradt, llm, context-aware, section)
+- Multiple LLM providers (Gemini, OpenAI, Ollama, LiteLLM)
+- Multiple embedding providers (Gemini, OpenAI, Ollama)
+- 6 vector stores (ChromaDB, Supabase, pgvector, Qdrant, Weaviate, Pinecone)
+- Simple CLI interface with two main commands: `chunker.py` and `embedder.py`
+- Automatic API key rotation for rate limit handling
+- Modular, extensible architecture
 
 ## Project Structure
 
 ```
-MizanAiChunking/
-├── llm_semantic_chunker/     # LLM-based semantic chunking (PRIMARY)
-│   ├── llm_semantic_md_chunker.py           # ChromaDB version
-│   ├── llm_semantic_md_chunker_supabase.py  # Supabase version
-│   ├── llm_semantic_pdf_chunker.py          # PDF chunker
-│   ├── api_key_manager.py                   # API key rotation
-│   ├── file_reader.py                       # File utilities
-│   ├── supabase_setup_function.sql          # One-time SQL setup
-│   ├── SETUP_ONCE.md                        # Supabase setup guide
-│   └── README_SUPABASE.md                   # Supabase documentation
-├── other_chunkers/            # Alternative chunking methods
-│   ├── context_aware_md_chunker.py
-│   ├── context_aware_pdf_chunker.py
-│   ├── markdown_section_chunker.py
-│   └── text_chunking_methods.py
-├── utils/                     # Utility scripts
-│   ├── reset_chromadb_collection.py
-│   └── disable_embeddings_patch.py
-├── .env                       # Environment variables (git-ignored)
-├── .gitignore                 # Git exclusions
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+MizanAI-Chunking/
+├── src/                       # Core modular architecture (v2.0)
+│   ├── chunkers/             # Chunking strategies
+│   │   ├── __init__.py       # Chunker registry
+│   │   ├── base.py           # Base chunker class
+│   │   ├── fixed_token.py    # Fixed-size token chunks
+│   │   ├── recursive.py      # Recursive text splitting
+│   │   ├── cluster_semantic.py    # Clustering-based semantic chunks
+│   │   ├── kamradt_semantic.py    # Similarity-based semantic chunks
+│   │   ├── llm_semantic.py        # LLM-based intelligent chunks
+│   │   ├── context_aware.py       # Context-preserving chunks
+│   │   └── section_based.py       # Section-based splitting
+│   │
+│   ├── embedders/            # Embedding providers
+│   │   ├── __init__.py       # Embedder registry
+│   │   ├── base.py           # Base embedder class
+│   │   ├── gemini.py         # Google Gemini embeddings
+│   │   ├── openai.py         # OpenAI embeddings
+│   │   └── ollama.py         # Ollama local embeddings
+│   │
+│   ├── llms/                 # LLM providers
+│   │   ├── __init__.py       # LLM registry
+│   │   ├── base.py           # Base LLM class
+│   │   ├── gemini.py         # Google Gemini
+│   │   ├── openai.py         # OpenAI (GPT models)
+│   │   ├── ollama.py         # Ollama local models
+│   │   └── litellm.py        # LiteLLM multi-provider
+│   │
+│   ├── vector_stores/        # Vector database integrations
+│   │   ├── __init__.py       # Vector store registry
+│   │   ├── base.py           # Base vector store class
+│   │   ├── chromadb_store.py      # ChromaDB (local/cloud)
+│   │   ├── supabase_store.py      # Supabase with pgvector
+│   │   ├── pgvector_store.py      # Direct PostgreSQL + pgvector
+│   │   ├── qdrant_store.py        # Qdrant vector database
+│   │   ├── weaviate_store.py      # Weaviate vector database
+│   │   └── pinecone_store.py      # Pinecone vector database
+│   │
+│   └── utils/                # Shared utilities
+│       ├── __init__.py       # Utility exports
+│       ├── config.py         # Configuration management
+│       ├── file_reader.py    # File reading utilities
+│       └── api_key_manager.py     # API key rotation
+│
+├── old-files/                # Legacy implementation (v1.0)
+│   ├── llm_semantic_chunker/      # Original LLM chunkers
+│   ├── other_chunkers/            # Original alternative chunkers
+│   └── utils/                     # Original utilities
+│
+├── chunker.py                # Main CLI for chunking
+├── embedder.py               # Main CLI for embedding & storage
+├── examples.sh               # Usage examples script
+├── .env.example              # Environment template
+├── .env                      # Environment variables (git-ignored)
+├── requirements.txt          # Python dependencies
+├── README.md                 # This file
+├── CLAUDE.md                 # Developer guide for Claude Code
+└── SETUP_GUIDE.md           # Detailed setup instructions
 ```
 
 **Excluded from Git** (see [.gitignore](.gitignore)):
-- `chatlog/` - Chat conversation logs (excluded)
-- `ChunkingOutput/`, `Output/` - Generated output folders
-- `docs/`, `MD_FILES/`, `tests/`, `chunking_evaluation/`, `BaseFileForMD/` - Excluded project folders
+- `.env` - API keys and credentials
+- `chatlog/`, `ChunkingOutput/`, `Output/` - Generated output folders
+- `docs/`, `MD_FILES/`, `tests/` - Working directories
 - `*.pdf`, `*.md` (except README.md) - Data files
-- `.env` - Secrets and API keys
 
 ## Quick Start
 
@@ -46,389 +90,485 @@ MizanAiChunking/
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/MizanAiChunking.git
-cd MizanAiChunking
+git clone <your-repo-url>
+cd Mizan-AI-Chunking
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Environment Configuration
-
-Create a `.env` file in the root directory with the following structure:
+### 2. Configuration
 
 ```bash
-# =============================================================================
-# GOOGLE GEMINI API KEYS (For LLM and Embeddings)
-# =============================================================================
-# Get your keys from: https://aistudio.google.com/app/apikey
-# The system uses automatic rotation between multiple keys to avoid rate limits
+# Copy environment template
+cp .env.example .env
 
-GEMINI_API_KEY_1=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-GEMINI_API_KEY_2=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-GEMINI_API_KEY_3=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-GEMINI_API_KEY_4=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+# Edit .env and add your API keys
+# At minimum, configure:
+# - One LLM provider (for LLM chunking)
+# - One embedding provider
+# - One vector store
+```
 
-# =============================================================================
-# CHROMADB CLOUD CREDENTIALS (For Vector Storage)
-# =============================================================================
-# Get your credentials from: https://www.trychroma.com/
-# Used by: llm_semantic_md_chunker.py
+**Minimum configuration example (Gemini + ChromaDB):**
+```bash
+# LLM
+LLM_PROVIDER=gemini
+GEMINI_API_KEY_1=your_gemini_key_here
 
-CHROMADB_API_KEY=ck-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-CHROMADB_TENANT=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# Embeddings
+EMBEDDING_PROVIDER=gemini
+
+# Vector Store
+VECTOR_STORE=chromadb
+CHROMADB_API_KEY=your_chromadb_key_here
+CHROMADB_TENANT=your_tenant_id
 CHROMADB_DATABASE=DEV
-
-# =============================================================================
-# SUPABASE CREDENTIALS (Alternative Vector Storage with PostgreSQL + pgvector)
-# =============================================================================
-# Get your credentials from: https://supabase.com/dashboard/project/_/settings/api
-# Used by: llm_semantic_md_chunker_supabase.py
-
-SUPABASE_URL=https://xxxxxxxxxxxxx.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
-**Important Security Notes:**
-- ⚠️ Never commit the `.env` file to Git (it's already in `.gitignore`)
-- ⚠️ Never hardcode API keys in your Python files
-- ⚠️ Use environment variables for all credentials
-- ✅ The `.env` file is automatically loaded by all scripts
+See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed provider configuration.
 
-### 3. Choose Your Vector Database
+### 3. Basic Usage
 
-You can use either **ChromaDB** (cloud-based) or **Supabase** (PostgreSQL + pgvector):
+**Two main commands:**
 
-#### Option A: ChromaDB (Simpler Setup)
+#### Chunker - Split documents into chunks
+```bash
+# Basic recursive chunking (recommended default)
+python chunker.py --file document.md
+
+# LLM semantic chunking (best quality, requires LLM)
+python chunker.py --file document.pdf --type llm
+
+# Save chunks to file for later
+python chunker.py --file document.txt --output chunks.json
+```
+
+#### Embedder - Generate embeddings and store in vector database
+```bash
+# All-in-one: chunk, embed, and store
+python embedder.py --file document.md
+
+# Specify chunker and vector store
+python embedder.py --file document.pdf --chunker-type llm --vector-store supabase
+
+# Load pre-chunked data
+python embedder.py --chunks chunks.json --vector-store chromadb
+```
+
+### 4. Get Help
 
 ```bash
-cd llm_semantic_chunker
-python llm_semantic_md_chunker.py
+python chunker.py --help
+python embedder.py --help
 
-# The script will:
-# 1. List all .md files in MD_FILES/ folder
-# 2. Let you select which file to process
-# 3. Perform LLM semantic analysis
-# 4. Save chunks to ChromaDB Cloud
+# See more examples
+bash examples.sh
 ```
 
-#### Option B: Supabase (More Control, PostgreSQL-based)
+## Architecture
 
-**One-time setup required:**
+### Modular Components
 
-1. Go to your Supabase Dashboard → SQL Editor
-2. Run the SQL from `llm_semantic_chunker/supabase_setup_function.sql`
-3. This creates a function for automatic table creation
+The v2.0 architecture is built around four core modules:
 
-For detailed setup instructions, see: [llm_semantic_chunker/SETUP_ONCE.md](llm_semantic_chunker/SETUP_ONCE.md)
+#### 1. Chunkers (`src/chunkers/`)
+Split documents into meaningful chunks using different strategies.
 
-```bash
-cd llm_semantic_chunker
-python llm_semantic_md_chunker_supabase.py
+**Available chunkers:**
+- **fixed** - Fixed-size token chunks (simple, predictable)
+- **recursive** - Recursive splitting by separators (good default)
+- **cluster** - Clustering-based semantic chunks (requires embeddings)
+- **kamradt** - Similarity-based semantic chunks (requires embeddings)
+- **llm** - LLM-based intelligent semantic chunks (best quality, requires LLM)
+- **context-aware** - Markdown-aware with context preservation
+- **section** - Split by markdown sections only
 
-# The script will:
-# 1. List all .md files in MD_FILES/ folder
-# 2. Let you select which file to process
-# 3. Perform LLM semantic analysis
-# 4. Automatically create Supabase table (if needed)
-# 5. Save chunks with embeddings to Supabase
-```
+All chunkers inherit from `BaseChunker` and implement the `chunk()` method.
 
-### 4. Place Your Documents
+#### 2. LLM Providers (`src/llms/`)
+Language models for semantic analysis (used by LLM chunker).
 
-```bash
-# Create MD_FILES folder if it doesn't exist
-mkdir MD_FILES
+**Supported providers:**
+- **gemini** - Google Gemini (gemini-2.0-flash-lite)
+- **openai** - OpenAI GPT models (gpt-4o-mini, gpt-4, etc.)
+- **ollama** - Local Ollama models (llama3.2, mistral, etc.)
+- **litellm** - Multi-provider abstraction (supports 100+ models)
 
-# Place your .md files there
-cp your_document.md MD_FILES/
-```
+#### 3. Embedding Providers (`src/embedders/`)
+Generate vector embeddings for semantic search.
 
-## Modules
+**Supported providers:**
+- **gemini** - Google Gemini embeddings (models/embedding-001, 768 dimensions)
+- **openai** - OpenAI embeddings (text-embedding-3-small, text-embedding-3-large)
+- **ollama** - Local Ollama embeddings (nomic-embed-text, etc.)
 
-### 📁 llm_semantic_chunker/
-**LLM-Based Semantic Chunking** - Uses Google Gemini to intelligently chunk documents
+#### 4. Vector Stores (`src/vector_stores/`)
+Store and retrieve embedded chunks.
 
-**Main Scripts:**
-- `llm_semantic_md_chunker.py` - **ChromaDB version** for cloud vector storage
-- `llm_semantic_md_chunker_supabase.py` - **Supabase version** for PostgreSQL + pgvector
-- `llm_semantic_pdf_chunker.py` - PDF semantic chunker
-- `api_key_manager.py` - Automatic API key rotation to avoid rate limits
-- `file_reader.py` - File reading utilities
+**Supported stores:**
+- **chromadb** - ChromaDB (local or cloud, simplest setup)
+- **supabase** - Supabase with pgvector (PostgreSQL-based, auto table creation)
+- **pgvector** - Direct PostgreSQL + pgvector (full control)
+- **qdrant** - Qdrant vector database (cloud or local)
+- **weaviate** - Weaviate vector database (cloud or local)
+- **pinecone** - Pinecone vector database (serverless)
 
-**Supabase Setup Files:**
-- `supabase_setup_function.sql` - SQL for one-time Supabase setup
-- `SETUP_ONCE.md` - Step-by-step Supabase configuration guide
-- `README_SUPABASE.md` - Complete Supabase documentation
-
-**Features:**
-- Pure semantic analysis (no arbitrary size limits)
-- Automatic API key rotation across 4 keys
-- Dual database support (ChromaDB Cloud + Supabase)
-- Automatic table creation for Supabase
-- Post-processing for oversized chunks
-- Batch insertion (100 records per batch for Supabase)
-
-**How it works:**
-1. Reads markdown file
-2. Sends text to Gemini LLM for semantic boundary detection
-3. Generates embeddings using Gemini embedding-001 (768 dimensions)
-4. Stores chunks + embeddings in ChromaDB or Supabase
-5. Ready for RAG retrieval
-
-### 📁 other_chunkers/
-**Alternative Chunking Methods**
-
-- `context_aware_md_chunker.py` - Context-aware markdown chunking
-- `context_aware_pdf_chunker.py` - Context-aware PDF chunking
-- `markdown_section_chunker.py` - Section-based markdown chunking
-- `text_chunking_methods.py` - 5 traditional methods:
-  1. Fixed Token Chunking
-  2. Recursive Token Chunking
-  3. Cluster Semantic Chunking
-  4. Kamradt Semantic Chunking
-  5. LLM Semantic Chunking
-
-All methods support optional embedding generation to avoid quota limits.
-
-### 📁 utils/
-**Utility Scripts**
-
-- `reset_chromadb_collection.py` - Delete and recreate ChromaDB collections with fresh chunks
-- `disable_embeddings_patch.py` - Patch to disable embeddings by default in chunking methods
-
-**Security:** All utilities now use environment variables instead of hardcoded credentials.
+All vector stores inherit from `BaseVectorStore` and implement standard operations.
 
 ## Key Features
 
-### 🧠 LLM Semantic Chunking
-- Uses Gemini AI to understand content semantics
-- Creates meaningful chunks based on topic boundaries
-- No arbitrary size limits (pure semantic approach)
+### Modular & Extensible
+- Plugin-based architecture for easy additions
+- Add new chunkers, embedders, LLMs, or vector stores by extending base classes
+- Consistent interfaces across all components
 
-### 🔄 Automatic API Key Rotation
-- Rotates between 4 Gemini API keys automatically
-- Avoids rate limits (15 RPM per key = 60 RPM total)
-- Seamless failover on quota errors
+### Multiple Chunking Strategies
+- 7 different chunking types for various use cases
+- From simple fixed-size to advanced LLM semantic analysis
+- Support for markdown, PDF, text, and DOCX files
 
-### 🗄️ Dual Vector Database Support
-- **ChromaDB Cloud**: Managed cloud service, zero setup
-- **Supabase**: PostgreSQL + pgvector, full control, automatic table creation
+### Multi-Provider Support
+- Switch between providers without code changes
+- Use free local models (Ollama) or cloud APIs
+- Automatic API key rotation for rate limit handling (Gemini)
 
-### 🔍 Hybrid Search (Chatbot - Excluded from Git)
-- Semantic search using embeddings (cosine similarity)
-- Keyword search using BM25 algorithm
-- Reciprocal Rank Fusion (RRF) for result merging
-- Retrieves 100 chunks for comprehensive context
+### Production-Ready Vector Storage
+- 6 vector database integrations
+- Automatic collection/table creation
+- Batch insertion for efficiency
+- Support for local and cloud deployments
 
-### 📊 Post-Processing
-- Automatically splits oversized chunks (>2000 tokens)
-- Maintains semantic boundaries during splitting
-- Ensures optimal chunk sizes for RAG
+### Simple CLI Interface
+- Two main commands: `chunker.py` and `embedder.py`
+- Intuitive command-line arguments
+- Verbose mode for debugging
+- JSON output for integration
 
-### 🔐 Security
-- All credentials in `.env` file (git-ignored)
-- No hardcoded API keys in codebase
-- Environment variable validation
-- Secure credential loading with `python-dotenv`
+### Automatic API Key Rotation
+- Rotates between multiple API keys automatically (Gemini)
+- Avoids rate limits seamlessly
+- Failover on quota errors
+- Supports up to 10 keys per provider
 
-## Environment Variables Reference
+## Environment Variables
 
-| Variable | Purpose | Required For | Where to Get |
-|----------|---------|--------------|--------------|
-| `GEMINI_API_KEY_1` to `GEMINI_API_KEY_4` | Google Gemini LLM & Embeddings | All chunkers | https://aistudio.google.com/app/apikey |
-| `CHROMADB_API_KEY` | ChromaDB authentication | ChromaDB version | https://www.trychroma.com/ |
-| `CHROMADB_TENANT` | ChromaDB tenant ID | ChromaDB version | ChromaDB dashboard |
-| `CHROMADB_DATABASE` | ChromaDB database name | ChromaDB version | ChromaDB dashboard |
-| `SUPABASE_URL` | Supabase project URL | Supabase version | Supabase project settings |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key | Supabase version | Supabase API settings |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key | Supabase version | Supabase API settings |
+Configuration is managed through the `.env` file. See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed setup.
 
-## Supabase Setup
+### Core Settings
 
-For Supabase integration, you need to run a **one-time SQL setup** to enable automatic table creation:
+```bash
+# General
+CHUNK_SIZE=512                    # Default chunk size in tokens
+CHUNK_OVERLAP=50                  # Default overlap in tokens
+COLLECTION_NAME=documents         # Default collection name
+```
 
-1. Open Supabase Dashboard → SQL Editor
-2. Copy SQL from `llm_semantic_chunker/supabase_setup_function.sql`
-3. Run the SQL (creates `create_document_table()` function)
-4. Done! Python script will auto-create tables for each document
+### LLM Providers (choose one)
 
-**Detailed guide:** [llm_semantic_chunker/SETUP_ONCE.md](llm_semantic_chunker/SETUP_ONCE.md)
+```bash
+# Gemini
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-2.0-flash-lite
+GEMINI_API_KEY_1=your_key_here
+GEMINI_API_KEY_2=your_key_here   # Optional, for rotation
 
-**Supabase features:**
-- Automatic table creation per document
-- Vector similarity search (pgvector with IVFFlat index)
-- PostgreSQL-based (full SQL access)
-- Batch insertion (100 records per batch)
-- 768-dimension embeddings from Gemini
+# OpenAI
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+OPENAI_API_KEY=your_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1  # Optional
+
+# Ollama (local)
+LLM_PROVIDER=ollama
+LLM_MODEL=llama3.2
+OLLAMA_BASE_URL=http://localhost:11434
+
+# LiteLLM
+LLM_PROVIDER=litellm
+LLM_MODEL=openai/gpt-4o-mini
+LITELLM_API_KEY=your_key_here
+```
+
+### Embedding Providers (choose one)
+
+```bash
+# Gemini
+EMBEDDING_PROVIDER=gemini
+EMBEDDING_MODEL=models/embedding-001
+EMBEDDING_DIMENSION=768
+
+# OpenAI
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSION=1536
+
+# Ollama
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIMENSION=768
+```
+
+### Vector Stores (choose one)
+
+```bash
+# ChromaDB
+VECTOR_STORE=chromadb
+CHROMADB_API_KEY=your_key         # For cloud
+CHROMADB_TENANT=your_tenant_id    # For cloud
+CHROMADB_DATABASE=DEV             # For cloud
+
+# Supabase
+VECTOR_STORE=supabase
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_KEY=your_key
+
+# PostgreSQL + pgvector
+VECTOR_STORE=pgvector
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=vectordb
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+
+# Qdrant
+VECTOR_STORE=qdrant
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=your_key           # For cloud
+
+# Weaviate
+VECTOR_STORE=weaviate
+WEAVIATE_URL=http://localhost:8080
+WEAVIATE_API_KEY=your_key         # For cloud
+
+# Pinecone
+VECTOR_STORE=pinecone
+PINECONE_API_KEY=your_key
+PINECONE_ENVIRONMENT=us-east-1-aws
+PINECONE_INDEX=documents
+```
+
+See `.env.example` for complete configuration template.
 
 ## Usage Examples
 
-### Process a Markdown File (ChromaDB)
+### Basic Chunking
 
 ```bash
-cd llm_semantic_chunker
-python llm_semantic_md_chunker.py
+# Recursive chunking (recommended default)
+python chunker.py --file document.md
+
+# LLM semantic chunking (best quality)
+python chunker.py --file document.pdf --type llm --chunk-size 512
+
+# Fixed chunking with custom size and overlap
+python chunker.py --file document.txt --type fixed --chunk-size 256 --overlap 50
+
+# Context-aware markdown chunking
+python chunker.py --file api_docs.md --type context-aware
+
+# Save chunks to JSON for later use
+python chunker.py --file document.md --type recursive --output chunks.json --verbose
 ```
 
-**Output:**
-```
-Available markdown files:
-1. digital_government_policies.md
-2. n8n_documentation.md
-
-Select file number: 2
-
-Processing: n8n_documentation.md
-Generating semantic chunks...
-Created 245 chunks
-Generating embeddings...
-Stored in ChromaDB collection: n8n_documentation_md_processed
-```
-
-### Process a Markdown File (Supabase)
+### Embedding and Storage
 
 ```bash
-cd llm_semantic_chunker
-python llm_semantic_md_chunker_supabase.py
+# All-in-one: chunk, embed, and store (uses .env settings)
+python embedder.py --file document.md
+
+# Specify chunker type and vector store
+python embedder.py --file document.pdf --chunker-type llm --vector-store supabase
+
+# Use specific embedding provider
+python embedder.py --file document.txt --embedding-provider openai
+
+# Custom collection name
+python embedder.py --file document.md --collection my_documents --verbose
+
+# Two-step workflow: chunk first, then embed
+python chunker.py --file document.md --type llm --output chunks.json
+python embedder.py --chunks chunks.json --vector-store chromadb
 ```
 
-**Output:**
-```
-Available markdown files:
-1. digital_government_policies.md
-2. n8n_documentation.md
-
-Select file number: 2
-
-Processing: n8n_documentation.md
-Generating semantic chunks...
-Created 245 chunks
-Checking if table exists...
-Table 'doc_n8n_documentation_md_processed' created
-Generating embeddings...
-Inserting batch 1/3 (100 records)...
-Inserting batch 2/3 (100 records)...
-Inserting batch 3/3 (45 records)...
-Stored 245 chunks in Supabase
-```
-
-### Reset ChromaDB Collection
+### Different Vector Stores
 
 ```bash
-cd utils
-python reset_chromadb_collection.py
+# ChromaDB (cloud or local)
+python embedder.py --file document.md --vector-store chromadb
+
+# Supabase (PostgreSQL + pgvector)
+python embedder.py --file document.pdf --vector-store supabase
+
+# Qdrant (cloud or local)
+python embedder.py --file document.txt --vector-store qdrant
+
+# Pinecone (serverless)
+python embedder.py --file document.md --vector-store pinecone --collection docs_index
 ```
 
-This will:
-1. Delete old collection
-2. Generate fresh chunks from PDF
-3. Filter out page headers and short chunks
-4. Create new collection
-5. Test with sample query
+### Advanced Examples
+
+```bash
+# Compare different chunking methods
+python chunker.py --file doc.md --type fixed --output fixed.json
+python chunker.py --file doc.md --type recursive --output recursive.json
+python chunker.py --file doc.md --type llm --output llm.json
+
+# Process multiple files
+for file in docs/*.md; do
+  python embedder.py --file "$file" --vector-store chromadb
+done
+
+# Large chunks for code documentation
+python embedder.py --file api_docs.md --chunk-size 1024 --chunk-overlap 100
+
+# Small chunks for Q&A
+python embedder.py --file faq.txt --chunk-size 256 --chunk-overlap 20
+```
+
+See [examples.sh](examples.sh) for more usage examples.
 
 ## API Rate Limits
 
-**Google Gemini API** (Free Tier):
-- 15 requests per minute (RPM) per API key
-- 1,500 requests per day (RPD) per API key
-- Solution: We use 4 keys in rotation = **60 RPM total**
+### Google Gemini (Free Tier)
+- Embeddings: 100 RPM, 30K TPM, 1K RPD per key
+- Generation: 10 RPM, 250K TPM, 250 RPD per key
+- **Solution**: Use multiple API keys (GEMINI_API_KEY_1, _2, _3, etc.) for automatic rotation
+- With 4 keys: 40 RPM generation, 400 RPM embeddings
 
-**ChromaDB Cloud** (Free Tier):
-- Check your plan limits at https://www.trychroma.com/
+### OpenAI
+- Varies by tier and model
+- Check: https://platform.openai.com/account/rate-limits
 
-**Supabase** (Free Tier):
-- 500 MB database
-- 50,000 monthly active users
-- 2 GB bandwidth
-- Check limits at https://supabase.com/pricing
+### Vector Store Limits
+- **ChromaDB Cloud**: Check plan at https://www.trychroma.com/
+- **Supabase Free**: 500 MB database, 2 GB bandwidth
+- **Qdrant Cloud**: Check plan at https://cloud.qdrant.io/
+- **Pinecone**: Check plan at https://www.pinecone.io/pricing/
+- **Local stores** (Ollama, local ChromaDB, local Qdrant): No limits
 
 ## Troubleshooting
 
-### "Resource has been exhausted (e.g. check quota)"
-- You've hit the API rate limit
-- Solution: The system automatically rotates to the next API key
-- Add more keys to `.env` if needed
+### "No LLM provider configured"
+**Solution**: Add at least one LLM provider to `.env`:
+- For Gemini: `GEMINI_API_KEY_1=your_key`
+- For OpenAI: `OPENAI_API_KEY=your_key`
+- For Ollama: `OLLAMA_BASE_URL=http://localhost:11434`
 
-### "Could not find the function create_document_table"
-- You haven't run the one-time Supabase SQL setup
-- Solution: Follow [llm_semantic_chunker/SETUP_ONCE.md](llm_semantic_chunker/SETUP_ONCE.md)
+### "Resource exhausted (quota)" (Gemini)
+**Solution**:
+- Add more API keys for rotation: `GEMINI_API_KEY_2`, `GEMINI_API_KEY_3`, etc.
+- System automatically rotates on rate limits
+- Or wait for quota reset (midnight PST)
 
-### "relation 'documents' does not exist" (n8n workflow)
-- Your workflow is looking for the wrong table name
-- Solution: Tables are named like `doc_filename_processed`
-- Update your match_documents function to use the correct table name
+### "ModuleNotFoundError"
+**Solution**: Install missing dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-### GitHub Security Alert - Exposed API Key
+### "Connection refused" (Ollama)
+**Solution**: Start Ollama server:
+```bash
+ollama serve
+```
 
-**If you see a GitHub security alert about an exposed API key:**
+### "Table does not exist" (Supabase/pgvector)
+**Solution**:
+- Tables are auto-created on first use
+- Check database permissions and pgvector extension is enabled
+- Verify `.env` credentials
 
-The key was removed from the current codebase but still exists in git history. To fully resolve:
+### Vector store connection issues
+**Solution**:
+1. Verify credentials in `.env`
+2. Check network connectivity
+3. For cloud services, check dashboard status
+4. For local services, ensure server is running
 
-1. **Revoke the exposed API key immediately:**
-   - Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-   - Delete the exposed API key
-   - Generate a new API key
+See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed troubleshooting.
 
-2. **Update your `.env` file:**
-   - Replace the old key with the new key
-   - Verify `.env` is in `.gitignore` (it is by default)
+## Extending the System
 
-3. **GitHub will automatically close the alert** within 24-48 hours after detecting the key is revoked
+### Adding a New Chunker
 
-**Prevention:**
-- Never commit `.env` file or hardcode keys in code
-- Always use environment variables for all credentials
-- The `.gitignore` is already configured to exclude sensitive files
+1. Create file in `src/chunkers/your_chunker.py`
+2. Inherit from `BaseChunker`
+3. Implement `chunk()` method
+4. Register in `src/chunkers/__init__.py`
 
-## Best Practices
+```python
+from .base import BaseChunker
 
-1. **Security:**
-   - Never hardcode API keys in code
-   - Always use `.env` for credentials
-   - Never commit `.env` to Git
-   - Rotate API keys periodically
+class YourChunker(BaseChunker):
+    def chunk(self, text: str, metadata: dict = None) -> List[dict]:
+        # Your chunking logic here
+        return chunks
+```
 
-2. **API Usage:**
-   - Use 4 Gemini API keys for rotation
-   - Monitor your quota usage
-   - Add `generate_embeddings=False` to chunking methods when testing
+### Adding a New LLM Provider
 
-3. **Database Choice:**
-   - **ChromaDB**: Simpler setup, managed cloud service
-   - **Supabase**: More control, PostgreSQL access, hybrid search support
+1. Create file in `src/llms/your_llm.py`
+2. Inherit from `BaseLLM`
+3. Implement `generate()` method
+4. Register in `src/llms/__init__.py`
 
-4. **Chunking:**
-   - Use LLM semantic chunking for best results
-   - Keep chunk sizes reasonable (400-800 tokens)
-   - Filter out page headers and very short chunks
+### Adding a New Vector Store
+
+1. Create file in `src/vector_stores/your_store.py`
+2. Inherit from `BaseVectorStore`
+3. Implement required methods
+4. Register in `src/vector_stores/__init__.py`
+
+See existing implementations for examples.
+
+## Legacy Implementation
+
+The original v1.0 implementation is preserved in the `old-files/` directory:
+- `old-files/llm_semantic_chunker/` - Original LLM chunkers
+- `old-files/other_chunkers/` - Original alternative methods
+- `old-files/utils/` - Original utilities
+
+These files are kept for reference but are no longer maintained.
+
+## Documentation
+
+- **[README.md](README.md)** - This file, project overview
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Detailed setup instructions for all providers
+- **[CLAUDE.md](CLAUDE.md)** - Developer guide for working with Claude Code
+- **[examples.sh](examples.sh)** - Comprehensive usage examples
+- **[.env.example](.env.example)** - Environment variable template
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
+Contributions are welcome! To add support for new providers:
 
 1. Fork the repository
 2. Create a feature branch
-3. Never commit API keys or `.env` files
-4. Test your changes with both ChromaDB and Supabase
-5. Submit a pull request
-
-## License
-
-[Add your license here]
+3. Follow the extension patterns (see "Extending the System")
+4. Never commit API keys or `.env` files
+5. Test with multiple providers
+6. Submit a pull request
 
 ## Support
 
-For issues and questions:
-- Check this README
-- See `llm_semantic_chunker/SETUP_ONCE.md` for Supabase setup
-- See `llm_semantic_chunker/README_SUPABASE.md` for Supabase details
+**For setup help:**
+- See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed configuration
+- Run `python chunker.py --help` or `python embedder.py --help`
+- Check [examples.sh](examples.sh) for usage patterns
+
+**For issues:**
+- Check troubleshooting section above
+- Review [CLAUDE.md](CLAUDE.md) for architecture details
 - Open an issue on GitHub
 
 ## Acknowledgments
 
-- **Google Gemini**: LLM and embedding model
-- **ChromaDB**: Vector database
-- **Supabase**: PostgreSQL + pgvector
-- **LangChain**: Inspiration for semantic chunking approaches
+- **Google Gemini** - LLM and embedding models
+- **OpenAI** - GPT models and embeddings
+- **ChromaDB** - Vector database
+- **Supabase** - PostgreSQL + pgvector
+- **Qdrant, Weaviate, Pinecone** - Vector database solutions
+- **Ollama** - Local LLM inference
+- **LangChain** - Inspiration for semantic chunking approaches

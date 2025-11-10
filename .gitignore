@@ -51,9 +51,8 @@ BaseFileForMD/
 *.pdf
 
 # Markdown files (exclude all except README.md in root)
-*.md
 !README.md
-
+CLAUDE.md
 # Secrets
 *API_KEY*.txt
 Qdrant_API_KEY.txt
