@@ -99,6 +99,8 @@ class GeminiLLM(BaseLLM):
             Generated text
         """
         def generate_func():
+            # Reconfigure with current key before each attempt
+            self._reconfigure_key()
             return self.generate(prompt, system_prompt)
 
         return self.key_manager.execute_with_retry(

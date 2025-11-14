@@ -1,6 +1,8 @@
-# MizanAI Chunking - Setup Guide
+# MizanAI Chunking v2.1 - Setup Guide
 
 Complete setup guide for the MizanAI Chunking system.
+
+**Production-Ready:** All 7 chunking strategies are tested, verified, and ready for deployment. See [sample-output/FIXES_VERIFICATION_REPORT.md](sample-output/FIXES_VERIFICATION_REPORT.md) for quality validation details.
 
 ## Table of Contents
 
@@ -107,7 +109,6 @@ LLM_MODEL=gemini-2.0-flash-lite
 GEMINI_API_KEY_1=AIzaSy...
 GEMINI_API_KEY_2=AIzaSy...
 GEMINI_API_KEY_3=AIzaSy...
-GEMINI_API_KEY_4=AIzaSy...
 
 EMBEDDING_PROVIDER=gemini
 EMBEDDING_MODEL=models/embedding-001

@@ -111,8 +111,41 @@ class ClusterSemanticChunker(BaseChunker):
 
             chunks.append(self._create_chunk_dict(chunk_text, len(chunks), metadata))
 
+        # Split oversized chunks (max 2x target size)
+        chunks = self._split_oversized_chunks(chunks, metadata)
+
         print(f"Created {len(chunks)} semantic clusters")
         return chunks
+
+    def _split_oversized_chunks(self, chunks: List[Dict], metadata: Optional[Dict] = None) -> List[Dict]:
+        """Split chunks that exceed maximum size"""
+        from .recursive import RecursiveChunker
+
+        max_size = self.chunk_size * 2  # Maximum allowed: 2x target size
+        result = []
+        oversized_count = 0
+
+        for chunk in chunks:
+            if chunk['tokens'] > max_size:
+                oversized_count += 1
+                # Split using recursive strategy
+                splitter = RecursiveChunker(
+                    chunk_size=self.chunk_size,
+                    chunk_overlap=self.chunk_overlap
+                )
+                sub_chunks = splitter.chunk(chunk['text'], metadata=chunk['metadata'])
+                result.extend(sub_chunks)
+            else:
+                result.append(chunk)
+
+        # Re-index all chunks
+        for i, chunk in enumerate(result):
+            chunk['metadata']['chunk_index'] = i
+
+        if oversized_count > 0:
+            print(f"  Split {oversized_count} oversized chunks (original: {len(chunks)}, final: {len(result)})")
+
+        return result
 
     def _split_sentences(self, text: str) -> List[str]:
         """Split text into sentences"""

@@ -86,8 +86,18 @@ class LLMSemanticChunker(BaseChunker):
                     all_chunks.append(chunk_dict)
                     chunk_index += 1
 
-        print(f"Created {len(all_chunks)} semantic chunks")
-        return all_chunks
+        # Filter out empty chunks
+        filtered_chunks = [c for c in all_chunks if c['text'].strip() and c['tokens'] > 0]
+
+        # Re-index chunks after filtering
+        for i, chunk in enumerate(filtered_chunks):
+            chunk['metadata']['chunk_index'] = i
+
+        if len(filtered_chunks) < len(all_chunks):
+            print(f"  Filtered out {len(all_chunks) - len(filtered_chunks)} empty chunks")
+
+        print(f"Created {len(filtered_chunks)} semantic chunks")
+        return filtered_chunks
 
     def _extract_sections(self, text: str) -> List[Dict]:
         """Extract markdown sections or treat as single section"""

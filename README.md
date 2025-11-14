@@ -1,4 +1,4 @@
-# MizanAI Chunking v2.0
+# MizanAI Chunking v2.1
 
 Advanced document chunking system with intelligent semantic analysis and multi-provider support. A modern, modular Python framework for document processing, embedding generation, and vector storage.
 
@@ -142,6 +142,9 @@ python chunker.py --file document.pdf --type llm
 
 # Save chunks to file for later
 python chunker.py --file document.txt --output chunks.json
+
+# Batch process directory
+python chunker.py --dir sample-md-files --output-dir chunks_output
 ```
 
 #### Embedder - Generate embeddings and store in vector database
@@ -154,6 +157,9 @@ python embedder.py --file document.pdf --chunker-type llm --vector-store supabas
 
 # Load pre-chunked data
 python embedder.py --chunks chunks.json --vector-store chromadb
+
+# Batch process directory of chunk files (all go into same collection)
+python embedder.py --dir chunks_output --vector-store chromadb
 ```
 
 ### 4. Get Help
@@ -215,6 +221,310 @@ Store and retrieve embedded chunks.
 - **pinecone** - Pinecone vector database (serverless)
 
 All vector stores inherit from `BaseVectorStore` and implement standard operations.
+
+## Chunking Strategies Explained
+
+MizanAI Chunking provides **7 different chunking strategies** to handle various document types and use cases. Each strategy has its own strengths and ideal scenarios.
+
+### 1. Fixed Token Chunker (`fixed`)
+
+**How it works:**
+- Splits text into equal-sized chunks based on token count
+- Simple sliding window approach with configurable overlap
+- No semantic analysis, purely mechanical splitting
+
+**When to use:**
+- Quick prototyping and testing
+- When you need predictable, uniform chunk sizes
+- Simple documents without complex structure
+- When speed is critical and semantic coherence is less important
+
+**Process:**
+1. Tokenize entire document
+2. Split into chunks of exactly N tokens
+3. Apply overlap between consecutive chunks
+
+**Speed:** ⚡⚡⚡ **Very Fast** (milliseconds for large documents)
+
+**Example:**
+```bash
+python chunker.py --file document.txt --type fixed --chunk-size 256 --overlap 50
+```
+
+---
+
+### 2. Recursive Chunker (`recursive`) ⭐ **Recommended Default**
+
+**How it works:**
+- Recursively splits text using a hierarchy of separators
+- Tries to split on paragraphs first, then sentences, then words
+- Respects natural text boundaries while maintaining target chunk size
+- Balances semantic coherence with size constraints
+
+**When to use:**
+- General-purpose chunking for most documents
+- When you want good results without complexity
+- Markdown, text, and structured documents
+- Best balance of speed and quality
+
+**Process:**
+1. Try to split on paragraph breaks (`\n\n`)
+2. If chunks too large, split on sentences (`.`, `!`, `?`)
+3. If still too large, split on clauses (`,`, `;`)
+4. Finally split on words or characters
+5. Merge small chunks to meet target size
+
+**Speed:** ⚡⚡⚡ **Very Fast** (seconds for large documents)
+
+**Example:**
+```bash
+python chunker.py --file document.md --type recursive --chunk-size 512
+```
+
+---
+
+### 3. Cluster Semantic Chunker (`cluster`)
+
+**How it works:**
+- Uses embedding-based clustering to group semantically similar sentences
+- Applies K-means clustering on sentence embeddings
+- Creates chunks by grouping sentences in the same cluster
+
+**When to use:**
+- Documents with mixed topics that need semantic separation
+- When you want to group related content regardless of position
+- Research papers, articles with multiple distinct sections
+- When semantic coherence is more important than position
+
+**Process:**
+1. Split text into sentences
+2. **Generate embeddings** for each sentence using configured embedding provider
+3. Apply K-means clustering (auto-determines optimal K or uses specified `--num-clusters`)
+4. Group consecutive sentences belonging to same cluster
+5. Form chunks from these groups
+6. Ensure chunks meet size constraints
+
+**Speed:** ⚡ **Moderate to Slow** (requires embedding generation for all sentences)
+- Small docs (<5K tokens): ~10-30 seconds
+- Large docs (>20K tokens): 1-3 minutes
+- **Note:** Speed depends on embedding provider and rate limits
+
+**Example:**
+```bash
+# Auto-determine number of clusters
+python chunker.py --file document.txt --type cluster --chunk-size 512
+
+# Specify number of clusters
+python chunker.py --file document.md --type cluster --num-clusters 15
+```
+
+**Requirements:**
+- Configured embedding provider in `.env`
+- Will use the embedding provider specified (Gemini, OpenAI, or Ollama)
+
+---
+
+### 4. Kamradt Semantic Chunker (`kamradt`)
+
+**How it works:**
+- Based on Greg Kamradt's semantic chunking approach
+- Calculates similarity between consecutive sentences using embeddings
+- Splits at points where similarity drops significantly (breakpoints)
+- Creates variable-sized chunks based on semantic coherence
+
+**When to use:**
+- Long-form content with natural topic transitions
+- Articles, blog posts, documentation
+- When you want chunks that align with natural topic changes
+- Better than recursive for documents with clear semantic shifts
+
+**Process:**
+1. Split text into sentences
+2. **Generate embeddings** for each sentence
+3. Calculate cosine similarity between consecutive sentences
+4. Identify breakpoints where similarity falls below percentile threshold
+5. Split document at breakpoints to create chunks
+6. Merge small chunks to meet minimum size
+
+**Speed:** ⚡ **Moderate to Slow** (requires embedding generation)
+- Small docs: ~10-30 seconds
+- Large docs: 1-3 minutes
+- Similar performance to cluster chunker
+
+**Example:**
+```bash
+# Default: 95th percentile threshold
+python chunker.py --file document.md --type kamradt
+
+# Custom breakpoint threshold (lower = more splits)
+python chunker.py --file document.txt --type kamradt --breakpoint-percentile 90
+```
+
+**Requirements:**
+- Configured embedding provider in `.env`
+
+---
+
+### 5. LLM Semantic Chunker (`llm`) ⭐ **Best Quality**
+
+**How it works:**
+- Uses a language model to intelligently analyze and split text
+- LLM identifies natural breakpoints based on semantic meaning
+- Creates chunks that preserve complete thoughts and context
+- Most sophisticated chunking method
+
+**When to use:**
+- High-stakes applications where quality matters most
+- Complex documents with nuanced structure
+- When you need chunks that make sense to humans
+- Technical documentation, legal documents, research papers
+- When you have LLM quota to spare
+
+**Process:**
+1. Send text to LLM with chunking instructions
+2. LLM analyzes semantic structure and topic boundaries
+3. LLM proposes chunk boundaries with reasoning
+4. System splits text at LLM-suggested points
+5. Validates chunk sizes and adjusts if needed
+
+**Speed:** 🐌 **Slow** (requires LLM API calls)
+- Small docs (<5K tokens): ~20-60 seconds
+- Large docs (>20K tokens): 2-10 minutes
+- **Note:** Speed depends on LLM provider, model, and rate limits
+
+**Example:**
+```bash
+# Default: uses LLM from .env
+python chunker.py --file document.pdf --type llm --chunk-size 512
+
+# With verbose output to see LLM reasoning
+python chunker.py --file document.md --type llm --verbose
+```
+
+**Requirements:**
+- Configured LLM provider in `.env` (Gemini, OpenAI, Ollama, or LiteLLM)
+- Consumes LLM API quota (approximately 2-5 requests per document)
+
+**Cost Considerations:**
+- **Gemini (gemini-2.0-flash-lite)**: Free tier, 10 RPM limit
+- **OpenAI (gpt-4o-mini)**: ~$0.15-0.60 per 1M tokens
+- **Ollama**: Free (local), but requires local GPU/CPU
+
+---
+
+### 6. Context-Aware Chunker (`context-aware`)
+
+**How it works:**
+- Markdown-aware chunking that preserves document structure
+- Keeps hierarchical context (headers, lists, code blocks)
+- Maintains parent headers in chunk metadata
+- Respects markdown boundaries (code blocks, tables, lists)
+
+**When to use:**
+- Markdown documentation and wikis
+- API documentation, README files
+- When preserving document structure is important
+- Technical documentation with code examples
+
+**Process:**
+1. Parse markdown structure (headers, code blocks, lists, etc.)
+2. Identify semantic units (sections, subsections)
+3. Create chunks that respect markdown boundaries
+4. Include parent header context in metadata
+5. Never split code blocks or tables mid-content
+
+**Speed:** ⚡⚡ **Fast** (no external API calls, intelligent parsing)
+- Small docs: <1 second
+- Large docs: 1-5 seconds
+
+**Example:**
+```bash
+python chunker.py --file api_docs.md --type context-aware
+```
+
+**Output includes:**
+- Full chunk text with proper markdown formatting
+- Metadata with parent headers (e.g., `# Overview > ## Features`)
+- Preserved code blocks and tables
+
+---
+
+### 7. Section-Based Chunker (`section`)
+
+**How it works:**
+- Simplest semantic approach: split only at markdown headers
+- Each chunk is one complete section
+- No token-size enforcement (sections can vary widely in size)
+- Ideal for structured documents with clear sections
+
+**When to use:**
+- Well-structured markdown with clear sections
+- When each section should be treated as atomic unit
+- Documentation where sections are self-contained
+- When section boundaries are more important than size uniformity
+
+**Process:**
+1. Parse markdown headers (`#`, `##`, `###`, etc.)
+2. Split document at header boundaries
+3. Each section becomes one chunk (regardless of size)
+4. Preserve header hierarchy in metadata
+
+**Speed:** ⚡⚡⚡ **Very Fast** (simple regex parsing)
+
+**Example:**
+```bash
+python chunker.py --file documentation.md --type section
+```
+
+**Note:** Chunk sizes will vary widely (100-5000+ tokens per chunk)
+
+---
+
+### Comparison Table
+
+| Strategy | Speed | Quality | Semantic Aware | Needs Embeddings | Needs LLM | Best For |
+|----------|-------|---------|----------------|------------------|-----------|----------|
+| **fixed** | ⚡⚡⚡ Very Fast | ⭐ Basic | ❌ No | ❌ No | ❌ No | Quick tests, uniform sizes |
+| **recursive** | ⚡⚡⚡ Very Fast | ⭐⭐⭐ Good | ✅ Partial | ❌ No | ❌ No | **General purpose** (recommended) |
+| **cluster** | ⚡ Moderate | ⭐⭐⭐⭐ Very Good | ✅ Yes | ✅ Yes | ❌ No | Mixed-topic documents |
+| **kamradt** | ⚡ Moderate | ⭐⭐⭐⭐ Very Good | ✅ Yes | ✅ Yes | ❌ No | Long-form content with topic shifts |
+| **llm** | 🐌 Slow | ⭐⭐⭐⭐⭐ Excellent | ✅ Yes | ❌ No | ✅ Yes | **Highest quality** (best results) |
+| **context-aware** | ⚡⚡ Fast | ⭐⭐⭐⭐ Very Good | ✅ Yes | ❌ No | ❌ No | Markdown documentation |
+| **section** | ⚡⚡⚡ Very Fast | ⭐⭐⭐ Good | ✅ Partial | ❌ No | ❌ No | Structured docs with sections |
+
+### Speed Details
+
+**Very Fast (⚡⚡⚡):** < 1 second for most documents
+- fixed, recursive, section
+
+**Fast (⚡⚡):** 1-5 seconds for most documents
+- context-aware
+
+**Moderate (⚡):** 10 seconds to 3 minutes (depends on doc size and API rate limits)
+- cluster, kamradt
+- Speed limited by embedding generation
+- With 4 Gemini API keys: ~400 RPM (can process ~100 chunks/minute)
+
+**Slow (🐌):** 20 seconds to 10+ minutes (depends on doc size and LLM speed)
+- llm
+- Speed limited by LLM generation rate
+- With 4 Gemini API keys: ~40 RPM (slower but higher quality)
+
+### Choosing the Right Strategy
+
+**Quick Decision Guide:**
+
+1. **Need fast prototyping?** → Use `recursive` (recommended default)
+2. **Need best quality and have time?** → Use `llm`
+3. **Working with markdown docs?** → Use `context-aware` or `section`
+4. **Document has distinct topics?** → Use `cluster` or `kamradt`
+5. **Need uniform sizes quickly?** → Use `fixed`
+
+**Performance Tiers:**
+
+- **Free tier + fast:** `recursive`, `context-aware`, `section`, `fixed`
+- **Free tier + quality (moderate speed):** `cluster`, `kamradt` (needs embeddings)
+- **Best quality (slower + API costs):** `llm` (needs LLM provider)
 
 ## Key Features
 
@@ -389,6 +699,10 @@ python embedder.py --file document.md --collection my_documents --verbose
 # Two-step workflow: chunk first, then embed
 python chunker.py --file document.md --type llm --output chunks.json
 python embedder.py --chunks chunks.json --vector-store chromadb
+
+# Batch workflow: process directory of files
+python chunker.py --dir sample-md-files --output-dir chunks_output
+python embedder.py --dir chunks_output --vector-store chromadb
 ```
 
 ### Different Vector Stores
@@ -415,7 +729,11 @@ python chunker.py --file doc.md --type fixed --output fixed.json
 python chunker.py --file doc.md --type recursive --output recursive.json
 python chunker.py --file doc.md --type llm --output llm.json
 
-# Process multiple files
+# Process multiple files (recommended: use batch processing)
+python chunker.py --dir docs --output-dir chunks_output
+python embedder.py --dir chunks_output --vector-store chromadb
+
+# Alternative: process files one by one
 for file in docs/*.md; do
   python embedder.py --file "$file" --vector-store chromadb
 done

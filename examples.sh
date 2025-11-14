@@ -56,6 +56,11 @@ echo "8. Save chunks to JSON file:"
 echo "python chunker.py --file document.txt --type recursive --output chunks.json"
 echo ""
 
+# 8a. Batch process directory of files
+echo "8a. Batch process directory:"
+echo "python chunker.py --dir sample-md-files --output-dir chunks_output"
+echo ""
+
 # =============================================================================
 # EMBEDDING & STORAGE EXAMPLES
 # =============================================================================
@@ -98,6 +103,11 @@ echo "15. Load and embed pre-chunked data:"
 echo "python embedder.py --chunks chunks.json --vector-store chromadb"
 echo ""
 
+# 15a. Batch process directory of chunk files
+echo "15a. Batch embed from directory:"
+echo "python embedder.py --dir chunks_output --vector-store chromadb"
+echo ""
+
 # 16. Custom embedding provider
 echo "16. Use OpenAI embeddings:"
 echo "python embedder.py --file document.md --embedding-provider openai --embedding-model text-embedding-3-small"
@@ -132,10 +142,16 @@ echo "python embedder.py --file document.md --chunker-type llm --vector-store su
 echo ""
 
 # 21. Workflow 4: Process multiple files
-echo "21. Process multiple files:"
+echo "21. Process multiple files (legacy approach):"
 echo "for file in docs/*.md; do"
 echo "  python embedder.py --file \"\$file\" --vector-store chromadb"
 echo "done"
+echo ""
+
+# 21a. Workflow 5: Batch process directory (recommended)
+echo "21a. Batch process directory (two-step):"
+echo "python chunker.py --dir docs --output-dir chunks_output"
+echo "python embedder.py --dir chunks_output --vector-store chromadb"
 echo ""
 
 # =============================================================================

@@ -58,7 +58,14 @@ class ContextAwareChunker(BaseChunker):
                     chunks.append(chunk_dict)
                     chunk_index += 1
 
-        return chunks
+        # Filter out empty chunks
+        filtered_chunks = [c for c in chunks if c['text'].strip() and c['tokens'] > 0]
+
+        # Re-index chunks after filtering
+        for i, chunk in enumerate(filtered_chunks):
+            chunk['metadata']['chunk_index'] = i
+
+        return filtered_chunks
 
     def _extract_sections(self, text: str) -> List[Dict]:
         """Extract markdown sections"""

@@ -5,6 +5,7 @@ Embedder CLI - Main entry point for embedding and storing documents
 Usage:
     python embedder.py --file document.md
     python embedder.py --chunks chunks.json --vector-store chromadb
+    python embedder.py --dir chunks_output --vector-store chromadb
     python embedder.py --file document.pdf --chunker-type llm --vector-store supabase
 """
 
@@ -12,11 +13,142 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import List, Tuple
 
 from src.chunkers import get_chunker
 from src.embedders import get_embedder
 from src.vector_stores import get_vector_store
 from src.utils import get_file_text, Config
+
+
+def get_chunk_files(dir_path: str) -> List[Path]:
+    """Get all JSON chunk files from directory"""
+    path = Path(dir_path)
+    if not path.exists():
+        print(f"Error: Directory not found: {dir_path}", file=sys.stderr)
+        sys.exit(1)
+
+    if not path.is_dir():
+        print(f"Error: Not a directory: {dir_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Get all JSON files
+    json_files = sorted(path.glob('*.json'))
+
+    if not json_files:
+        print(f"Error: No JSON files found in {dir_path}", file=sys.stderr)
+        sys.exit(1)
+
+    return json_files
+
+
+def load_chunk_file(file_path: Path, verbose: bool = False) -> Tuple[List[dict], str]:
+    """Load chunks from a JSON file"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            chunks = data.get('chunks', [])
+            source_file = data.get('source_file', str(file_path))
+
+            if not chunks:
+                print(f"  ⚠ Warning: No chunks found in {file_path.name}", file=sys.stderr)
+                return [], source_file
+
+            if verbose:
+                print(f"  ✓ Loaded {len(chunks)} chunks")
+
+            return chunks, source_file
+    except json.JSONDecodeError as e:
+        print(f"  ✗ Error: Invalid JSON in {file_path.name}: {e}", file=sys.stderr)
+        return [], ""
+    except Exception as e:
+        print(f"  ✗ Error loading {file_path.name}: {e}", file=sys.stderr)
+        return [], ""
+
+
+def process_single_file(args, config, embedder, vector_store):
+    """Process a single file (original behavior)"""
+    # Load or create chunks
+    if args.chunks:
+        # Load pre-chunked data
+        print(f"\nLoading chunks from: {args.chunks}")
+        try:
+            with open(args.chunks, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                chunks = data['chunks']
+                source_file = data.get('file', args.chunks)
+            print(f"✓ Loaded {len(chunks)} chunks")
+        except Exception as e:
+            print(f"Error loading chunks: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Read and chunk file
+        if not Path(args.file).exists():
+            print(f"Error: File not found: {args.file}", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"\nReading file: {args.file}")
+        try:
+            text = get_file_text(args.file)
+            print(f"✓ Read {len(text)} characters")
+        except Exception as e:
+            print(f"Error reading file: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        # Chunk text
+        print(f"\nChunking with {args.chunker_type} chunker...")
+        try:
+            chunker = get_chunker(
+                args.chunker_type,
+                chunk_size=args.chunk_size,
+                chunk_overlap=args.chunk_overlap
+            )
+            chunks = chunker.chunk(text, metadata={'source_file': args.file})
+            print(f"✓ Created {len(chunks)} chunks")
+        except Exception as e:
+            print(f"Error chunking: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        source_file = args.file
+
+    return chunks, source_file
+
+
+def process_directory(dir_path: str, args, embedder, vector_store):
+    """Process all chunk files in a directory"""
+    chunk_files = get_chunk_files(dir_path)
+
+    print(f"\nFound {len(chunk_files)} chunk file(s) in {dir_path}")
+    print(f"All chunks will be stored in collection: {vector_store.collection_name}\n")
+
+    all_chunks = []
+    stats = {'success': 0, 'failed': 0, 'total_chunks': 0}
+
+    # Load all chunk files
+    for i, chunk_file in enumerate(chunk_files, 1):
+        print(f"[{i}/{len(chunk_files)}] {chunk_file.name}")
+
+        chunks, source_file = load_chunk_file(chunk_file, args.verbose)
+
+        if chunks:
+            all_chunks.extend(chunks)
+            stats['success'] += 1
+            stats['total_chunks'] += len(chunks)
+            print(f"  ✓ Loaded {len(chunks)} chunks")
+        else:
+            stats['failed'] += 1
+
+        print()
+
+    if not all_chunks:
+        print("Error: No chunks loaded from any files", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"{'='*60}")
+    print(f"Total chunks loaded: {len(all_chunks)}")
+    print(f"{'='*60}\n")
+
+    return all_chunks, stats
 
 
 def main():
@@ -42,6 +174,9 @@ Examples:
   # Load pre-chunked data
   python embedder.py --chunks chunks.json --vector-store qdrant
 
+  # Process entire directory of chunk files
+  python embedder.py --dir chunks_output --vector-store chromadb
+
   # Custom collection name
   python embedder.py --file document.txt --collection my_docs
         """
@@ -53,6 +188,8 @@ Examples:
                             help='Input file path (.txt, .md, .pdf, .docx)')
     input_group.add_argument('--chunks', '-c',
                             help='Pre-chunked JSON file (output from chunker.py)')
+    input_group.add_argument('--dir', '-d',
+                            help='Directory containing chunk JSON files (batch processing)')
 
     # Chunking configuration (only used if --file is provided)
     parser.add_argument('--chunker-type', '-t', default='recursive',
@@ -110,60 +247,26 @@ Examples:
     embedding_model = args.embedding_model or config.embedding_model
     embedding_dimension = config.embedding_dimension
 
+    print(f"\n{'='*60}")
+    print(f"  Embedding and Vector Storage")
+    print(f"{'='*60}\n")
     print(f"Configuration:")
     print(f"  Vector Store:  {vector_store_type}")
     print(f"  Embedder:      {embedding_provider}/{embedding_model}")
     print(f"  Dimension:     {embedding_dimension}")
 
-    # Load or create chunks
-    if args.chunks:
-        # Load pre-chunked data
-        print(f"\nLoading chunks from: {args.chunks}")
-        try:
-            with open(args.chunks, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                chunks = data['chunks']
-                source_file = data.get('file', args.chunks)
-            print(f"✓ Loaded {len(chunks)} chunks")
-        except Exception as e:
-            print(f"Error loading chunks: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        # Read and chunk file
-        if not Path(args.file).exists():
-            print(f"Error: File not found: {args.file}", file=sys.stderr)
-            sys.exit(1)
-
-        print(f"\nReading file: {args.file}")
-        try:
-            text = get_file_text(args.file)
-            print(f"✓ Read {len(text)} characters")
-        except Exception as e:
-            print(f"Error reading file: {e}", file=sys.stderr)
-            sys.exit(1)
-
-        # Chunk text
-        print(f"\nChunking with {args.chunker_type} chunker...")
-        try:
-            chunker = get_chunker(
-                args.chunker_type,
-                chunk_size=args.chunk_size,
-                chunk_overlap=args.chunk_overlap
-            )
-            chunks = chunker.chunk(text, metadata={'source_file': args.file})
-            print(f"✓ Created {len(chunks)} chunks")
-        except Exception as e:
-            print(f"Error chunking: {e}", file=sys.stderr)
-            sys.exit(1)
-
-        source_file = args.file
-
-    # Determine collection name
+    # Determine collection name first (needed for vector store initialization)
     if args.collection:
         collection_name = args.collection
+    elif args.dir:
+        # For directory processing, use directory name
+        collection_name = Path(args.dir).name.replace('-', '_').replace('.', '_')
+    elif args.chunks:
+        # For single chunk file, use filename
+        collection_name = Path(args.chunks).stem.replace('-', '_').replace('.', '_')
     else:
-        # Auto-generate from filename
-        collection_name = Path(source_file).stem.replace('-', '_').replace('.', '_')
+        # For single file, use filename
+        collection_name = Path(args.file).stem.replace('-', '_').replace('.', '_')
 
     print(f"  Collection:    {collection_name}")
 
@@ -212,6 +315,15 @@ Examples:
             traceback.print_exc()
         sys.exit(1)
 
+    # Process based on input type
+    if args.dir:
+        # Directory processing
+        chunks, dir_stats = process_directory(args.dir, args, embedder, vector_store)
+    else:
+        # Single file processing
+        chunks, source_file = process_single_file(args, config, embedder, vector_store)
+        dir_stats = None
+
     # Generate embeddings
     print(f"\nGenerating embeddings for {len(chunks)} chunks...")
     try:
@@ -251,6 +363,21 @@ Examples:
             traceback.print_exc()
         sys.exit(1)
 
+    # Final summary
+    print(f"\n{'='*60}")
+    print(f"  Summary")
+    print(f"{'='*60}")
+
+    if dir_stats:
+        print(f"  Files processed:  {dir_stats['success']}/{dir_stats['success'] + dir_stats['failed']}")
+        if dir_stats['failed'] > 0:
+            print(f"  Failed:           {dir_stats['failed']}")
+        print(f"  Total chunks:     {dir_stats['total_chunks']}")
+    else:
+        print(f"  Chunks stored:    {len(chunks)}")
+
+    print(f"  Collection:       {collection_name}")
+    print(f"  Vector store:     {vector_store_type}")
     print(f"\n✅ Complete! Collection '{collection_name}' ready for search.")
 
 
