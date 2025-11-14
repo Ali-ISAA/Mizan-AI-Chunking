@@ -37,8 +37,8 @@ class LLMSemanticChunker(BaseChunker):
         self.llm_provider = llm_provider or config.llm_provider
         self.llm_model = llm_model or config.llm_model
 
-        # Initialize LLM
-        self.llm = get_llm(self.llm_provider, self.llm_model, temperature=0.2)
+        # Initialize LLM with temperature=0 for deterministic chunking
+        self.llm = get_llm(self.llm_provider, self.llm_model, temperature=0.0)
 
     def chunk(self, text: str, metadata: Optional[Dict] = None) -> List[Dict]:
         """
@@ -151,12 +151,19 @@ Return ONLY a JSON array of split points (character indices where splits should 
 
 This means split at character 150, 430, and 680."""
 
+        # Determine how much text to send (balance between context and LLM limits)
+        # Most LLMs can handle 8K-16K tokens, so use up to 10000 chars (~2500 tokens)
+        max_chars = 10000
+        text_to_analyze = section_text[:max_chars]
+        is_truncated = len(section_text) > max_chars
+
         user_prompt = f"""Analyze this text section and determine optimal split points for semantic chunking.
 
 Section: {section_header}
 
 Text:
-{section_text[:4000]}
+{text_to_analyze}
+{f"[Note: Text truncated at {max_chars} characters for analysis]" if is_truncated else ""}
 
 Return only the JSON array of split indices."""
 

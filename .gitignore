@@ -40,6 +40,7 @@ chatlog/
 docs/
 MD_FILES/
 tests/
+test-scripts/
 chunking_evaluation/
 BaseFileForMD/
 

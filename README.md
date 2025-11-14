@@ -526,6 +526,250 @@ python chunker.py --file documentation.md --type section
 - **Free tier + quality (moderate speed):** `cluster`, `kamradt` (needs embeddings)
 - **Best quality (slower + API costs):** `llm` (needs LLM provider)
 
+---
+
+## Collection Strategy & Vector Store Organization
+
+Understanding how to organize your documents in vector stores is crucial for effective semantic search and RAG applications.
+
+### What are Collections?
+
+Collections are logical groupings of vectors in a vector database. Different vector stores use different terminology but serve the same purpose:
+
+| Vector Store | Terminology | Description |
+|--------------|-------------|-------------|
+| **Qdrant** | Collection | Logical group of vectors with metadata |
+| **ChromaDB** | Collection | Named group of embeddings |
+| **Supabase/pgvector** | Table | PostgreSQL table with vector column |
+| **Weaviate** | Class | Schema-based data object type |
+| **Pinecone** | Index | Top-level namespace for vectors |
+
+### Strategy 1: Single Collection (Recommended for Most Use Cases) ⭐
+
+**Store all documents in ONE collection, use metadata to distinguish them.**
+
+```bash
+# All documents go to one collection
+python embedder.py --dir sample-output/llm --vector-store qdrant --collection knowledge_base
+python embedder.py --dir sample-output/recursive --vector-store qdrant --collection knowledge_base
+python embedder.py --dir sample-output/context-aware --vector-store qdrant --collection knowledge_base
+```
+
+**Benefits:**
+- ✅ **Semantic search across ALL documents** (the main benefit!)
+- ✅ Find related information across different documents
+- ✅ Simpler management - one place to search
+- ✅ Still filterable by document using metadata
+- ✅ Perfect for RAG applications and chatbots
+- ✅ Better results when topics are related
+
+**When to use:**
+- Company knowledge base (search all documents together)
+- Documentation site (search across all guides)
+- Customer support articles
+- RAG chatbot (search across all context)
+- Research papers library
+- Code documentation
+- Multi-document Q&A systems
+
+**How metadata filtering works:**
+
+Each chunk automatically includes metadata:
+```json
+{
+  "text": "The company's return policy allows...",
+  "metadata": {
+    "source_file": "customer_policy.pdf",
+    "chunk_index": 5,
+    "chunker_type": "llm",
+    "document_id": "policy_001",
+    "department": "customer_service"
+  }
+}
+```
+
+Search with filters (vector store dependent):
+```python
+# Search only in specific document
+results = vector_store.search(
+    query_embedding,
+    top_k=5,
+    filter={"source_file": "customer_policy.pdf"}
+)
+
+# Search only LLM-chunked content
+results = vector_store.search(
+    query_embedding,
+    top_k=5,
+    filter={"chunker_type": "llm"}
+)
+
+# Search specific department
+results = vector_store.search(
+    query_embedding,
+    top_k=5,
+    filter={"department": "customer_service"}
+)
+```
+
+### Strategy 2: Multiple Collections (Use for Data Isolation)
+
+**Separate collection per project/tenant/domain when you need complete isolation.**
+
+```bash
+# Customer A's data (completely isolated)
+python embedder.py --dir customer_a_docs --vector-store qdrant --collection customer_a
+
+# Customer B's data (completely isolated)
+python embedder.py --dir customer_b_docs --vector-store qdrant --collection customer_b
+
+# Legal documents (separate domain)
+python embedder.py --dir legal_docs --vector-store qdrant --collection legal_docs
+
+# Medical documents (separate domain)
+python embedder.py --dir medical_docs --vector-store qdrant --collection medical_docs
+```
+
+**Benefits:**
+- ✅ Complete data isolation (security requirement)
+- ✅ Different configurations per collection
+- ✅ Can use different embedding models
+- ✅ Independent scaling, backup, and deletion
+- ✅ Access control at collection level
+
+**When to use:**
+- **Multi-tenant SaaS** - One collection per customer (critical for security)
+- **Different embedding models** - Different domains need different embeddings
+- **Access control** - Different teams/permissions per collection
+- **Completely separate domains** - Legal vs medical vs technical (no semantic overlap)
+- **Different languages** - One collection per language
+- **Compliance requirements** - Data must be physically/logically separated
+
+### Practical Examples
+
+#### Example 1: Company Knowledge Base (Single Collection)
+
+```bash
+# All company docs in one searchable collection
+python embedder.py --file hr_handbook.pdf --collection company_kb --vector-store qdrant
+python embedder.py --file product_guide.pdf --collection company_kb --vector-store qdrant
+python embedder.py --file return_policy.pdf --collection company_kb --vector-store qdrant
+
+# Search query: "What is our return policy?"
+# ✅ Can find info across: HR docs, product docs, policy docs
+# ✅ Better results because related content is searchable together
+```
+
+#### Example 2: Multi-Tenant SaaS (Multiple Collections)
+
+```bash
+# Each customer gets their own isolated collection
+python embedder.py --dir tenant_123_docs --collection tenant_123 --vector-store qdrant
+python embedder.py --dir tenant_456_docs --collection tenant_456 --vector-store qdrant
+
+# Customer 123 can ONLY search collection: tenant_123
+# Customer 456 can ONLY search collection: tenant_456
+# ✅ Complete data isolation for security and compliance
+```
+
+#### Example 3: Testing Different Chunking Strategies (Single Collection)
+
+```bash
+# Compare different chunkers in same collection
+python embedder.py --dir sample-output/llm --collection test_all --vector-store qdrant
+python embedder.py --dir sample-output/recursive --collection test_all --vector-store qdrant
+python embedder.py --dir sample-output/cluster --collection test_all --vector-store qdrant
+
+# Metadata will show: chunker_type: "llm", "recursive", "cluster"
+# ✅ Easy to compare which chunker gives better search results!
+```
+
+### Vector Store Capabilities Comparison
+
+| Feature | Qdrant | ChromaDB | Supabase/pgvector | Weaviate | Pinecone |
+|---------|--------|----------|-------------------|----------|----------|
+| **Multiple Collections** | ✅ Unlimited | ✅ Unlimited | ✅ Many tables | ✅ Many classes | ✅ Limited (paid) |
+| **Metadata Filtering** | ✅ Rich filters | ✅ Basic WHERE | ✅ Full SQL | ✅ GraphQL | ✅ Rich filters |
+| **Collection Limits** | No practical limit | No practical limit | DB table limit | No limit | Plan dependent |
+| **Cross-Collection Search** | ❌ Not supported | ❌ Not supported | ✅ SQL JOINs | ✅ Cross-refs | ❌ Not supported |
+| **Dynamic Schema** | ✅ Flexible | ✅ Flexible | ⚠️ Table schema | ✅ Flexible | ✅ Flexible |
+| **Metadata Types** | JSON objects | Dict/JSON | PostgreSQL types | GraphQL types | JSON metadata |
+
+### Best Practices
+
+#### ✅ DO:
+- **Use single collection for related documents** - Better semantic search and discovery
+- **Use metadata extensively** - Filter without creating multiple collections
+- **Name collections descriptively** - `customer_docs` not `collection_1`
+- **Use multiple collections for tenants** - Security and compliance requirement
+- **Test chunking strategies in same collection** - Easy A/B comparison
+- **Plan metadata schema early** - Consistent metadata enables better filtering
+
+#### ❌ DON'T:
+- **Don't create collection per document** - Loses cross-document semantic search
+- **Don't use collections for simple filtering** - Use metadata instead
+- **Don't mix different embedding models in one collection** - Vectors won't be comparable
+- **Don't over-complicate** - Start with single collection, split only when needed
+- **Don't forget to add custom metadata** - Source, category, date, etc.
+
+### Decision Tree
+
+```
+┌─ Do you need complete data isolation (multi-tenant, security)?
+│
+├─ YES → Multiple Collections
+│         ├─ One collection per tenant/customer
+│         ├─ One collection per compliance domain
+│         └─ One collection per language
+│
+└─ NO  → Do you want to search ACROSS all documents?
+          │
+          ├─ YES → Single Collection + Metadata filtering
+          │         ├─ Store all documents together
+          │         ├─ Use metadata for filtering
+          │         └─ Better semantic search results
+          │
+          └─ NO  → Are these documents related at all?
+                   ├─ YES → You probably want single collection
+                   └─ NO  → Multiple collections (different domains)
+```
+
+### Collection Naming Conventions
+
+**Good names:**
+```bash
+--collection company_knowledge_base
+--collection customer_support_articles
+--collection product_documentation
+--collection tenant_acme_corp
+--collection legal_compliance_docs
+```
+
+**Avoid:**
+```bash
+--collection collection1          # Too generic
+--collection test                 # Not descriptive
+--collection my_collection        # Unclear purpose
+--collection data                 # Too vague
+```
+
+### When to Refactor
+
+**Signs you need to split collections:**
+1. Different teams need different access permissions
+2. Embedding model changes for a subset of documents
+3. Multi-tenant requirements emerge
+4. Compliance requires data isolation
+5. Performance degrades due to collection size (rare with modern vector DBs)
+
+**Signs you should merge collections:**
+1. Frequently searching across multiple collections
+2. Related documents in different collections
+3. Duplicate metadata management
+4. Complicated application logic to handle multiple collections
+
+---
+
 ## Key Features
 
 ### Modular & Extensible

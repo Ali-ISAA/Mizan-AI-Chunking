@@ -1,17 +1,16 @@
-"""LLM providers"""
+"""LLM providers with lazy loading"""
 
 from .base import BaseLLM
-from .gemini import GeminiLLM
-from .openai import OpenAILLM
-from .ollama import OllamaLLM
-from .litellm import LiteLLM
 
-__all__ = ['BaseLLM', 'GeminiLLM', 'OpenAILLM', 'OllamaLLM', 'LiteLLM']
+__all__ = ['BaseLLM', 'get_llm']
 
 
 def get_llm(provider: str, model_name: str, **kwargs) -> BaseLLM:
     """
     Factory function to get LLM instance
+
+    Uses lazy imports to avoid loading unnecessary dependencies.
+    Only the requested LLM provider is imported and initialized.
 
     Parameters:
     -----------
@@ -30,12 +29,16 @@ def get_llm(provider: str, model_name: str, **kwargs) -> BaseLLM:
     provider = provider.lower()
 
     if provider == 'gemini':
+        from .gemini import GeminiLLM
         return GeminiLLM(model_name=model_name, **kwargs)
     elif provider == 'openai':
+        from .openai import OpenAILLM
         return OpenAILLM(model_name=model_name, **kwargs)
     elif provider == 'ollama':
+        from .ollama import OllamaLLM
         return OllamaLLM(model_name=model_name, **kwargs)
     elif provider == 'litellm':
+        from .litellm import LiteLLM
         return LiteLLM(model_name=model_name, **kwargs)
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")

@@ -1,16 +1,16 @@
-"""Embedding providers"""
+"""Embedding providers with lazy loading"""
 
 from .base import BaseEmbedder
-from .gemini import GeminiEmbedder
-from .openai import OpenAIEmbedder
-from .ollama import OllamaEmbedder
 
-__all__ = ['BaseEmbedder', 'GeminiEmbedder', 'OpenAIEmbedder', 'OllamaEmbedder']
+__all__ = ['BaseEmbedder', 'get_embedder']
 
 
 def get_embedder(provider: str, model_name: str, dimension: int, **kwargs) -> BaseEmbedder:
     """
     Factory function to get embedder instance
+
+    Uses lazy imports to avoid loading unnecessary dependencies.
+    Only the requested embedder provider is imported and initialized.
 
     Parameters:
     -----------
@@ -31,10 +31,13 @@ def get_embedder(provider: str, model_name: str, dimension: int, **kwargs) -> Ba
     provider = provider.lower()
 
     if provider == 'gemini':
+        from .gemini import GeminiEmbedder
         return GeminiEmbedder(model_name=model_name, dimension=dimension, **kwargs)
     elif provider == 'openai':
+        from .openai import OpenAIEmbedder
         return OpenAIEmbedder(model_name=model_name, dimension=dimension, **kwargs)
     elif provider == 'ollama':
+        from .ollama import OllamaEmbedder
         return OllamaEmbedder(model_name=model_name, dimension=dimension, **kwargs)
     else:
         raise ValueError(f"Unknown embedding provider: {provider}")
