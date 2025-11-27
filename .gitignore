@@ -34,6 +34,7 @@ venv.bak/
 ChunkingOutput/
 output/
 Output/
+chunks_output/
 
 # Project folders to exclude
 chatlog/

@@ -37,7 +37,7 @@ def get_files_to_process(file_path: str = None, dir_path: str = None) -> List[Pa
 
         # Get all supported file types
         for ext in ['*.md', '*.txt', '*.pdf', '*.docx']:
-            files.extend(path.glob(ext))
+            files.extend(path.rglob(ext))
 
         if not files:
             print(f"Error: No supported files found in {dir_path}", file=sys.stderr)
@@ -62,11 +62,30 @@ def process_file(file_path: Path, args, config, chunker):
     # Chunk text
     try:
         metadata = {
-            'source_file': str(file_path),
-            'chunker_type': args.type,
+            # 'source_file': str(file_path),
+            # 'chunker_type': args.type,
             'chunk_size': args.chunk_size,
-            'chunk_overlap': args.overlap
+            # 'chunk_overlap': args.overlap
+            
         }
+
+        # If markdown, parse YAML front matter and append to metadata, and strip it from text
+        if str(file_path).lower().endswith('.md'):
+            import re
+            try:
+                # Match YAML front matter at the top of the file
+                match = re.match(r'^---\s*\n(.*?)\n---\s*\n?', text, re.DOTALL)
+                if match:
+                    yaml_str = match.group(1)
+                    import yaml
+                    yaml_meta = yaml.safe_load(yaml_str)
+                    if isinstance(yaml_meta, dict):
+                        metadata.update(yaml_meta)
+                    # Remove front matter from text
+                    text = text[match.end():]
+            except Exception as e:
+                if args.verbose:
+                    print(f"  ✗ Error parsing markdown metadata: {e}", file=sys.stderr)
 
         chunks = chunker.chunk(text, metadata=metadata)
 
