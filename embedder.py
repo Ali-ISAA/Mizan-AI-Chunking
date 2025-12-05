@@ -276,6 +276,9 @@ Examples:
     parser.add_argument('--skip-existing', action='store_true',
                        help='Skip if collection already exists')
 
+    parser.add_argument('--clear', action='store_true',
+                       help='Clear (delete) the collection before adding new data')
+
     args = parser.parse_args()
 
     # Initialize config
@@ -340,6 +343,15 @@ Examples:
             embedding_dimension
         )
         print(f"✓ {vector_store}")
+
+        # Handle --clear flag
+        if args.clear:
+            try:
+                deleted = vector_store.delete_collection()
+                if deleted:
+                    print(f"✓ Cleared existing collection")
+            except Exception:
+                pass  # Collection didn't exist, continue
 
         # Create collection
         if args.skip_existing:
