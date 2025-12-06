@@ -62,10 +62,10 @@ def process_file(file_path: Path, args, config, chunker):
     # Chunk text
     try:
         metadata = {
-            # 'source_file': str(file_path),
-            # 'chunker_type': args.type,
+            'source_file': str(file_path),
+            'chunker_type': args.type,
             'chunk_size': args.chunk_size,
-            # 'chunk_overlap': args.overlap
+            'chunk_overlap': args.overlap
             
         }
 
