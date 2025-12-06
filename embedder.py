@@ -21,7 +21,7 @@ from src.vector_stores import get_vector_store
 from src.utils import get_file_text, Config
 
 
-def get_chunk_files(dir_path: str) -> List[Path]:
+def get_chunk_files(dir_path: str, recursive: bool = True) -> List[Path]:
     """Get all JSON chunk files from directory"""
     path = Path(dir_path)
     if not path.exists():
@@ -32,8 +32,11 @@ def get_chunk_files(dir_path: str) -> List[Path]:
         print(f"Error: Not a directory: {dir_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Get all JSON files recursively
-    json_files = sorted(path.rglob('*.json'))
+    # Get all JSON files (recursively by default)
+    if recursive:
+        json_files = sorted(path.rglob('*.json'))
+    else:
+        json_files = sorted(path.glob('*.json'))
 
     if not json_files:
         print(f"Error: No JSON files found in {dir_path}", file=sys.stderr)
@@ -114,13 +117,13 @@ def process_single_file(args, config, embedder, vector_store):
     return chunks, source_file
 
 
-def process_directory_incremental(dir_path: str, args, embedder, vector_store):
+def process_directory_incremental(dir_path: str, args, embedder, vector_store, recursive: bool = True):
     """
     Process all chunk files in a directory INCREMENTALLY.
     Each document is: loaded → embedded → stored immediately.
     This provides better memory efficiency and fault tolerance.
     """
-    chunk_files = get_chunk_files(dir_path)
+    chunk_files = get_chunk_files(dir_path, recursive=recursive)
 
     print(f"\nFound {len(chunk_files)} chunk file(s) in {dir_path}")
     print(f"All chunks will be stored in collection: {vector_store.collection_name}")
@@ -279,6 +282,12 @@ Examples:
     parser.add_argument('--clear', action='store_true',
                        help='Clear (delete) the collection before adding new data')
 
+    parser.add_argument('--no-recursive', action='store_true',
+                       help='Only search top-level directory (do not recurse into subdirectories)')
+
+    parser.add_argument('--batch', action='store_true',
+                       help='Batch mode: load all chunks first, then embed and store (uses more memory)')
+
     args = parser.parse_args()
 
     # Initialize config
@@ -377,88 +386,116 @@ Examples:
 
     # Process based on input type
     if args.dir:
-        # Directory processing - BATCH MODE
-        # Load all chunks from all files, embed and store in one batch
-        chunk_files = get_chunk_files(args.dir)
+        # Directory processing
+        recursive = not args.no_recursive
 
-        print(f"\nFound {len(chunk_files)} chunk file(s) in {args.dir}")
-        print(f"All chunks will be stored in collection: {vector_store.collection_name}")
-        print("Processing mode: BATCH (all chunks at once)\n")
+        if args.batch:
+            # BATCH MODE - Load all chunks first, then embed and store
+            chunk_files = get_chunk_files(args.dir, recursive=recursive)
 
-        all_chunks = []
-        failed_files = []
-        for chunk_file in chunk_files:
-            chunks, _ = load_chunk_file(chunk_file, verbose=False)
-            if not chunks:
-                failed_files.append(chunk_file.name)
-                continue
-            all_chunks.extend(chunks)
+            print(f"\nFound {len(chunk_files)} chunk file(s) in {args.dir}")
+            print(f"All chunks will be stored in collection: {vector_store.collection_name}")
+            print("Processing mode: BATCH (all chunks at once)\n")
 
-        print(f"Loaded {len(all_chunks)} total chunks from {len(chunk_files) - len(failed_files)} files.")
-        if failed_files:
-            print(f"Failed to load chunks from: {', '.join(failed_files)}")
+            all_chunks = []
+            failed_files = []
+            for chunk_file in chunk_files:
+                chunks, _ = load_chunk_file(chunk_file, verbose=False)
+                if not chunks:
+                    failed_files.append(chunk_file.name)
+                    continue
+                all_chunks.extend(chunks)
 
-        # Generate embeddings for all chunks
-        print("\nGenerating embeddings for all chunks...")
-        try:
-            texts = [chunk['text'] for chunk in all_chunks]
-            embeddings = embedder.embed_batch(texts)
-            print(f"✓ Generated {len(embeddings)} embeddings")
-        except Exception as e:
-            print(f"Error generating embeddings: {e}", file=sys.stderr)
-            if args.verbose:
-                import traceback
-                traceback.print_exc()
-            sys.exit(1)
+            print(f"Loaded {len(all_chunks)} total chunks from {len(chunk_files) - len(failed_files)} files.")
+            if failed_files:
+                print(f"Failed to load chunks from: {', '.join(failed_files)}")
 
-        # Store all in vector database with progress reporting
-        print(f"\nStoring all chunks in {vector_store_type}...")
-        try:
-            metadata_list = [chunk['metadata'] for chunk in all_chunks]
-
-            batch_size = 100
-            total = len(all_chunks)
-            success = True
-            for start in range(0, total, batch_size):
-                end = min(start + batch_size, total)
-                batch_texts = texts[start:end]
-                batch_embeddings = embeddings[start:end]
-                batch_metadata = metadata_list[start:end]
-                batch_success = vector_store.insert(
-                    texts=batch_texts,
-                    embeddings=batch_embeddings,
-                    metadata=batch_metadata
-                )
-                if not batch_success:
-                    success = False
-                print(f"  ✓ Stored {end} / {total} chunks")
-
-            if success:
-                print(f"✓ Successfully stored {total} chunks")
-                try:
-                    final_count = vector_store.get_count()
-                    print(f"✓ Total vectors in collection: {final_count}")
-                except Exception:
-                    pass
-            else:
-                print("Error: Failed to store chunks", file=sys.stderr)
+            # Generate embeddings for all chunks
+            print("\nGenerating embeddings for all chunks...")
+            try:
+                texts = [chunk['text'] for chunk in all_chunks]
+                embeddings = embedder.embed_batch(texts)
+                print(f"✓ Generated {len(embeddings)} embeddings")
+            except Exception as e:
+                print(f"Error generating embeddings: {e}", file=sys.stderr)
+                if args.verbose:
+                    import traceback
+                    traceback.print_exc()
                 sys.exit(1)
 
-        except Exception as e:
-            print(f"Error storing chunks: {e}", file=sys.stderr)
-            if args.verbose:
-                import traceback
-                traceback.print_exc()
-            sys.exit(1)
+            # Store all in vector database with progress reporting
+            print(f"\nStoring all chunks in {vector_store_type}...")
+            try:
+                metadata_list = [chunk['metadata'] for chunk in all_chunks]
 
-        # Final summary
-        print(f"{'='*60}")
-        print("  Summary")
-        print(f"{'='*60}")
-        print(f"  Chunks stored:    {len(all_chunks)}")
-        print(f"  Collection:       {collection_name}")
-        print(f"  Vector store:     {vector_store_type}")
-        print(f"\n✅ Complete! Collection '{collection_name}' ready for search.")
+                batch_size = 100
+                total = len(all_chunks)
+                success = True
+                for start in range(0, total, batch_size):
+                    end = min(start + batch_size, total)
+                    batch_texts = texts[start:end]
+                    batch_embeddings = embeddings[start:end]
+                    batch_metadata = metadata_list[start:end]
+                    batch_success = vector_store.insert(
+                        texts=batch_texts,
+                        embeddings=batch_embeddings,
+                        metadata=batch_metadata
+                    )
+                    if not batch_success:
+                        success = False
+                    print(f"  ✓ Stored {end} / {total} chunks")
+
+                if success:
+                    print(f"✓ Successfully stored {total} chunks")
+                    try:
+                        final_count = vector_store.get_count()
+                        print(f"✓ Total vectors in collection: {final_count}")
+                    except Exception:
+                        pass
+                else:
+                    print("Error: Failed to store chunks", file=sys.stderr)
+                    sys.exit(1)
+
+            except Exception as e:
+                print(f"Error storing chunks: {e}", file=sys.stderr)
+                if args.verbose:
+                    import traceback
+                    traceback.print_exc()
+                sys.exit(1)
+
+            # Final summary
+            print(f"{'='*60}")
+            print("  Summary")
+            print(f"{'='*60}")
+            print(f"  Chunks stored:    {len(all_chunks)}")
+            print(f"  Collection:       {collection_name}")
+            print(f"  Vector store:     {vector_store_type}")
+            print(f"\n✅ Complete! Collection '{collection_name}' ready for search.")
+
+        else:
+            # INCREMENTAL MODE (default) - Process each file immediately
+            dir_stats = process_directory_incremental(args.dir, args, embedder, vector_store, recursive=recursive)
+
+            # Summary for directory processing
+            print(f"{'='*60}")
+            print("  Summary")
+            print(f"{'='*60}")
+            print(f"  Files processed:  {dir_stats['success']}/{dir_stats['success'] + dir_stats['failed']}")
+            if dir_stats['failed'] > 0:
+                print(f"  Failed:           {dir_stats['failed']}")
+                if args.verbose and dir_stats['failed_files']:
+                    print(f"  Failed files:     {', '.join(dir_stats['failed_files'])}")
+            print(f"  Total chunks:     {dir_stats['total_chunks']}")
+
+            try:
+                final_count = vector_store.get_count()
+                print(f"  Total vectors:    {final_count}")
+            except Exception:
+                pass  # Some vector stores might not support count
+
+            print(f"  Collection:       {collection_name}")
+            print(f"  Vector store:     {vector_store_type}")
+            print(f"\n✅ Complete! Collection '{collection_name}' ready for search.")
 
     else:
         # Single file processing - BATCH MODE

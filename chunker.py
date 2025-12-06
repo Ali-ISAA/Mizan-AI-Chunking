@@ -18,7 +18,7 @@ from src.chunkers import get_chunker
 from src.utils import get_file_text, Config
 
 
-def get_files_to_process(file_path: str = None, dir_path: str = None) -> List[Path]:
+def get_files_to_process(file_path: str = None, dir_path: str = None, recursive: bool = True) -> List[Path]:
     """Get list of files to process from file or directory"""
     files = []
 
@@ -37,7 +37,10 @@ def get_files_to_process(file_path: str = None, dir_path: str = None) -> List[Pa
 
         # Get all supported file types
         for ext in ['*.md', '*.txt', '*.pdf', '*.docx']:
-            files.extend(path.rglob(ext))
+            if recursive:
+                files.extend(path.rglob(ext))
+            else:
+                files.extend(path.glob(ext))
 
         if not files:
             print(f"Error: No supported files found in {dir_path}", file=sys.stderr)
@@ -168,6 +171,9 @@ Examples:
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
 
+    parser.add_argument('--no-recursive', action='store_true',
+                       help='Only search top-level directory (do not recurse into subdirectories)')
+
     # Configuration
     parser.add_argument('--env-file',
                        help='Path to .env file (default: .env in project root)')
@@ -186,7 +192,7 @@ Examples:
         sys.exit(1)
 
     # Get files to process
-    files = get_files_to_process(args.file, args.dir)
+    files = get_files_to_process(args.file, args.dir, recursive=not args.no_recursive)
 
     print(f"\n{'='*60}")
     print(f"  Chunking Documents")

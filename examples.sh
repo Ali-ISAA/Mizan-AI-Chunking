@@ -56,9 +56,14 @@ echo "8. Save chunks to JSON file:"
 echo "python chunker.py --file document.txt --type recursive --output chunks.json"
 echo ""
 
-# 8a. Batch process directory of files
-echo "8a. Batch process directory:"
+# 8a. Batch process directory of files (recursive by default)
+echo "8a. Batch process directory (recursive):"
 echo "python chunker.py --dir sample-md-files --output-dir chunks_output"
+echo ""
+
+# 8b. Process only top-level directory (no recursion)
+echo "8b. Process top-level only (no recursion):"
+echo "python chunker.py --dir sample-md-files --output-dir chunks_output --no-recursive"
 echo ""
 
 # =============================================================================
@@ -103,9 +108,24 @@ echo "15. Load and embed pre-chunked data:"
 echo "python embedder.py --chunks chunks.json --vector-store chromadb"
 echo ""
 
-# 15a. Batch process directory of chunk files
-echo "15a. Batch embed from directory:"
+# 15a. Process directory of chunk files (incremental mode, default)
+echo "15a. Embed from directory (incremental, per-file):"
 echo "python embedder.py --dir chunks_output --vector-store chromadb"
+echo ""
+
+# 15b. Process directory in batch mode (all at once)
+echo "15b. Embed from directory (batch mode):"
+echo "python embedder.py --dir chunks_output --vector-store chromadb --batch"
+echo ""
+
+# 15c. Process only top-level directory (no recursion)
+echo "15c. Embed from directory (no recursion):"
+echo "python embedder.py --dir chunks_output --vector-store chromadb --no-recursive"
+echo ""
+
+# 15d. Clear collection before adding new data
+echo "15d. Clear collection and re-embed:"
+echo "python embedder.py --dir chunks_output --vector-store chromadb --clear"
 echo ""
 
 # 16. Custom embedding provider

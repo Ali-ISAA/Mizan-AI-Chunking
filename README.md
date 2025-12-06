@@ -147,8 +147,11 @@ python chunker.py --file document.pdf --type llm
 # Save chunks to file for later
 python chunker.py --file document.txt --output chunks.json
 
-# Batch process directory
+# Batch process directory (recursive by default)
 python chunker.py --dir sample-md-files --output-dir chunks_output
+
+# Process only top-level directory (no subdirectories)
+python chunker.py --dir sample-md-files --output-dir chunks_output --no-recursive
 ```
 
 #### Embedder - Generate embeddings and store in vector database
@@ -163,8 +166,17 @@ python embedder.py --file document.pdf --chunker-type llm --vector-store supabas
 # Load pre-chunked data
 python embedder.py --chunks chunks.json --vector-store chromadb
 
-# Batch process directory of chunk files (all go into same collection)
+# Process directory of chunk files (incremental mode, per-file)
 python embedder.py --dir chunks_output --vector-store chromadb
+
+# Process directory in batch mode (load all, then embed)
+python embedder.py --dir chunks_output --vector-store chromadb --batch
+
+# Process only top-level directory (no subdirectories)
+python embedder.py --dir chunks_output --vector-store chromadb --no-recursive
+
+# Clear collection before adding new data
+python embedder.py --dir chunks_output --vector-store chromadb --clear
 ```
 
 ### 4. Get Help
@@ -1016,9 +1028,18 @@ python embedder.py --file document.md --collection my_documents --verbose
 python chunker.py --file document.md --type llm --output chunks.json
 python embedder.py --chunks chunks.json --vector-store chromadb
 
-# Batch workflow: process directory of files
-python chunker.py --dir sample-md-files --output-dir chunks_output  # Recursively processes all supported files, including nested
-python embedder.py --dir chunks_output --vector-store chromadb      # Recursively processes all .json chunk files, including nested
+# Batch workflow: process directory of files (recursive by default)
+python chunker.py --dir sample-md-files --output-dir chunks_output
+python embedder.py --dir chunks_output --vector-store chromadb
+
+# Use --no-recursive to process only top-level directory
+python chunker.py --dir sample-md-files --output-dir chunks_output --no-recursive
+
+# Use --batch for batch mode (load all chunks first, then embed)
+python embedder.py --dir chunks_output --vector-store chromadb --batch
+
+# Use --clear to clear collection before adding new data
+python embedder.py --dir chunks_output --vector-store chromadb --clear
 ```
 
 ### Different Vector Stores
