@@ -7,6 +7,7 @@ Advanced document chunking system with intelligent semantic analysis and multi-p
 MizanAI Chunking is a comprehensive document processing pipeline that transforms raw documents into semantically meaningful chunks stored in vector databases. The system features a modular architecture with support for multiple LLM providers, embedding services, and vector stores.
 
 **Key Features:**
+
 - 7 different chunking strategies (fixed, recursive, cluster, kamradt, llm, context-aware, section)
 - Multiple LLM providers (Gemini, OpenAI, Ollama, LiteLLM)
 - Multiple embedding providers (Gemini, OpenAI, Ollama)
@@ -79,6 +80,7 @@ MizanAI-Chunking/
 ```
 
 **Excluded from Git** (see [.gitignore](.gitignore)):
+
 - `.env` - API keys and credentials
 - `chatlog/`, `ChunkingOutput/`, `Output/` - Generated output folders
 - `docs/`, `MD_FILES/`, `tests/` - Working directories
@@ -111,6 +113,7 @@ cp .env.example .env
 ```
 
 **Minimum configuration example (Gemini + ChromaDB):**
+
 ```bash
 # LLM
 LLM_PROVIDER=gemini
@@ -133,6 +136,7 @@ See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed provider configuration.
 **Two main commands:**
 
 #### Chunker - Split documents into chunks
+
 ```bash
 # Basic recursive chunking (recommended default)
 python chunker.py --file document.md
@@ -143,11 +147,15 @@ python chunker.py --file document.pdf --type llm
 # Save chunks to file for later
 python chunker.py --file document.txt --output chunks.json
 
-# Batch process directory
+# Batch process directory (recursive by default)
 python chunker.py --dir sample-md-files --output-dir chunks_output
+
+# Process only top-level directory (no subdirectories)
+python chunker.py --dir sample-md-files --output-dir chunks_output --no-recursive
 ```
 
 #### Embedder - Generate embeddings and store in vector database
+
 ```bash
 # All-in-one: chunk, embed, and store
 python embedder.py --file document.md
@@ -158,8 +166,17 @@ python embedder.py --file document.pdf --chunker-type llm --vector-store supabas
 # Load pre-chunked data
 python embedder.py --chunks chunks.json --vector-store chromadb
 
-# Batch process directory of chunk files (all go into same collection)
+# Process directory of chunk files (incremental mode, per-file)
 python embedder.py --dir chunks_output --vector-store chromadb
+
+# Process directory in batch mode (load all, then embed)
+python embedder.py --dir chunks_output --vector-store chromadb --batch
+
+# Process only top-level directory (no subdirectories)
+python embedder.py --dir chunks_output --vector-store chromadb --no-recursive
+
+# Clear collection before adding new data
+python embedder.py --dir chunks_output --vector-store chromadb --clear
 ```
 
 ### 4. Get Help
@@ -179,9 +196,11 @@ bash examples.sh
 The v2.0 architecture is built around four core modules:
 
 #### 1. Chunkers (`src/chunkers/`)
+
 Split documents into meaningful chunks using different strategies.
 
 **Available chunkers:**
+
 - **fixed** - Fixed-size token chunks (simple, predictable)
 - **recursive** - Recursive splitting by separators (good default)
 - **cluster** - Clustering-based semantic chunks (requires embeddings)
@@ -193,26 +212,32 @@ Split documents into meaningful chunks using different strategies.
 All chunkers inherit from `BaseChunker` and implement the `chunk()` method.
 
 #### 2. LLM Providers (`src/llms/`)
+
 Language models for semantic analysis (used by LLM chunker).
 
 **Supported providers:**
+
 - **gemini** - Google Gemini (gemini-2.0-flash-lite)
 - **openai** - OpenAI GPT models (gpt-4o-mini, gpt-4, etc.)
 - **ollama** - Local Ollama models (llama3.2, mistral, etc.)
 - **litellm** - Multi-provider abstraction (supports 100+ models)
 
 #### 3. Embedding Providers (`src/embedders/`)
+
 Generate vector embeddings for semantic search.
 
 **Supported providers:**
+
 - **gemini** - Google Gemini embeddings (models/embedding-001, 768 dimensions)
 - **openai** - OpenAI embeddings (text-embedding-3-small, text-embedding-3-large)
 - **ollama** - Local Ollama embeddings (nomic-embed-text, etc.)
 
 #### 4. Vector Stores (`src/vector_stores/`)
+
 Store and retrieve embedded chunks.
 
 **Supported stores:**
+
 - **chromadb** - ChromaDB (local or cloud, simplest setup)
 - **supabase** - Supabase with pgvector (PostgreSQL-based, auto table creation)
 - **pgvector** - Direct PostgreSQL + pgvector (full control)
@@ -229,17 +254,20 @@ MizanAI Chunking provides **7 different chunking strategies** to handle various 
 ### 1. Fixed Token Chunker (`fixed`)
 
 **How it works:**
+
 - Splits text into equal-sized chunks based on token count
 - Simple sliding window approach with configurable overlap
 - No semantic analysis, purely mechanical splitting
 
 **When to use:**
+
 - Quick prototyping and testing
 - When you need predictable, uniform chunk sizes
 - Simple documents without complex structure
 - When speed is critical and semantic coherence is less important
 
 **Process:**
+
 1. Tokenize entire document
 2. Split into chunks of exactly N tokens
 3. Apply overlap between consecutive chunks
@@ -247,6 +275,7 @@ MizanAI Chunking provides **7 different chunking strategies** to handle various 
 **Speed:** ⚡⚡⚡ **Very Fast** (milliseconds for large documents)
 
 **Example:**
+
 ```bash
 python chunker.py --file document.txt --type fixed --chunk-size 256 --overlap 50
 ```
@@ -256,18 +285,21 @@ python chunker.py --file document.txt --type fixed --chunk-size 256 --overlap 50
 ### 2. Recursive Chunker (`recursive`) ⭐ **Recommended Default**
 
 **How it works:**
+
 - Recursively splits text using a hierarchy of separators
 - Tries to split on paragraphs first, then sentences, then words
 - Respects natural text boundaries while maintaining target chunk size
 - Balances semantic coherence with size constraints
 
 **When to use:**
+
 - General-purpose chunking for most documents
 - When you want good results without complexity
 - Markdown, text, and structured documents
 - Best balance of speed and quality
 
 **Process:**
+
 1. Try to split on paragraph breaks (`\n\n`)
 2. If chunks too large, split on sentences (`.`, `!`, `?`)
 3. If still too large, split on clauses (`,`, `;`)
@@ -277,6 +309,7 @@ python chunker.py --file document.txt --type fixed --chunk-size 256 --overlap 50
 **Speed:** ⚡⚡⚡ **Very Fast** (seconds for large documents)
 
 **Example:**
+
 ```bash
 python chunker.py --file document.md --type recursive --chunk-size 512
 ```
@@ -286,17 +319,20 @@ python chunker.py --file document.md --type recursive --chunk-size 512
 ### 3. Cluster Semantic Chunker (`cluster`)
 
 **How it works:**
+
 - Uses embedding-based clustering to group semantically similar sentences
 - Applies K-means clustering on sentence embeddings
 - Creates chunks by grouping sentences in the same cluster
 
 **When to use:**
+
 - Documents with mixed topics that need semantic separation
 - When you want to group related content regardless of position
 - Research papers, articles with multiple distinct sections
 - When semantic coherence is more important than position
 
 **Process:**
+
 1. Split text into sentences
 2. **Generate embeddings** for each sentence using configured embedding provider
 3. Apply K-means clustering (auto-determines optimal K or uses specified `--num-clusters`)
@@ -305,11 +341,13 @@ python chunker.py --file document.md --type recursive --chunk-size 512
 6. Ensure chunks meet size constraints
 
 **Speed:** ⚡ **Moderate to Slow** (requires embedding generation for all sentences)
+
 - Small docs (<5K tokens): ~10-30 seconds
 - Large docs (>20K tokens): 1-3 minutes
 - **Note:** Speed depends on embedding provider and rate limits
 
 **Example:**
+
 ```bash
 # Auto-determine number of clusters
 python chunker.py --file document.txt --type cluster --chunk-size 512
@@ -319,6 +357,7 @@ python chunker.py --file document.md --type cluster --num-clusters 15
 ```
 
 **Requirements:**
+
 - Configured embedding provider in `.env`
 - Will use the embedding provider specified (Gemini, OpenAI, or Ollama)
 
@@ -327,18 +366,21 @@ python chunker.py --file document.md --type cluster --num-clusters 15
 ### 4. Kamradt Semantic Chunker (`kamradt`)
 
 **How it works:**
+
 - Based on Greg Kamradt's semantic chunking approach
 - Calculates similarity between consecutive sentences using embeddings
 - Splits at points where similarity drops significantly (breakpoints)
 - Creates variable-sized chunks based on semantic coherence
 
 **When to use:**
+
 - Long-form content with natural topic transitions
 - Articles, blog posts, documentation
 - When you want chunks that align with natural topic changes
 - Better than recursive for documents with clear semantic shifts
 
 **Process:**
+
 1. Split text into sentences
 2. **Generate embeddings** for each sentence
 3. Calculate cosine similarity between consecutive sentences
@@ -347,11 +389,13 @@ python chunker.py --file document.md --type cluster --num-clusters 15
 6. Merge small chunks to meet minimum size
 
 **Speed:** ⚡ **Moderate to Slow** (requires embedding generation)
+
 - Small docs: ~10-30 seconds
 - Large docs: 1-3 minutes
 - Similar performance to cluster chunker
 
 **Example:**
+
 ```bash
 # Default: 95th percentile threshold
 python chunker.py --file document.md --type kamradt
@@ -361,6 +405,7 @@ python chunker.py --file document.txt --type kamradt --breakpoint-percentile 90
 ```
 
 **Requirements:**
+
 - Configured embedding provider in `.env`
 
 ---
@@ -368,12 +413,14 @@ python chunker.py --file document.txt --type kamradt --breakpoint-percentile 90
 ### 5. LLM Semantic Chunker (`llm`) ⭐ **Best Quality**
 
 **How it works:**
+
 - Uses a language model to intelligently analyze and split text
 - LLM identifies natural breakpoints based on semantic meaning
 - Creates chunks that preserve complete thoughts and context
 - Most sophisticated chunking method
 
 **When to use:**
+
 - High-stakes applications where quality matters most
 - Complex documents with nuanced structure
 - When you need chunks that make sense to humans
@@ -381,6 +428,7 @@ python chunker.py --file document.txt --type kamradt --breakpoint-percentile 90
 - When you have LLM quota to spare
 
 **Process:**
+
 1. Send text to LLM with chunking instructions
 2. LLM analyzes semantic structure and topic boundaries
 3. LLM proposes chunk boundaries with reasoning
@@ -388,11 +436,13 @@ python chunker.py --file document.txt --type kamradt --breakpoint-percentile 90
 5. Validates chunk sizes and adjusts if needed
 
 **Speed:** 🐌 **Slow** (requires LLM API calls)
+
 - Small docs (<5K tokens): ~20-60 seconds
 - Large docs (>20K tokens): 2-10 minutes
 - **Note:** Speed depends on LLM provider, model, and rate limits
 
 **Example:**
+
 ```bash
 # Default: uses LLM from .env
 python chunker.py --file document.pdf --type llm --chunk-size 512
@@ -402,10 +452,12 @@ python chunker.py --file document.md --type llm --verbose
 ```
 
 **Requirements:**
+
 - Configured LLM provider in `.env` (Gemini, OpenAI, Ollama, or LiteLLM)
 - Consumes LLM API quota (approximately 2-5 requests per document)
 
 **Cost Considerations:**
+
 - **Gemini (gemini-2.0-flash-lite)**: Free tier, 10 RPM limit
 - **OpenAI (gpt-4o-mini)**: ~$0.15-0.60 per 1M tokens
 - **Ollama**: Free (local), but requires local GPU/CPU
@@ -415,18 +467,21 @@ python chunker.py --file document.md --type llm --verbose
 ### 6. Context-Aware Chunker (`context-aware`)
 
 **How it works:**
+
 - Markdown-aware chunking that preserves document structure
 - Keeps hierarchical context (headers, lists, code blocks)
 - Maintains parent headers in chunk metadata
 - Respects markdown boundaries (code blocks, tables, lists)
 
 **When to use:**
+
 - Markdown documentation and wikis
 - API documentation, README files
 - When preserving document structure is important
 - Technical documentation with code examples
 
 **Process:**
+
 1. Parse markdown structure (headers, code blocks, lists, etc.)
 2. Identify semantic units (sections, subsections)
 3. Create chunks that respect markdown boundaries
@@ -434,15 +489,18 @@ python chunker.py --file document.md --type llm --verbose
 5. Never split code blocks or tables mid-content
 
 **Speed:** ⚡⚡ **Fast** (no external API calls, intelligent parsing)
+
 - Small docs: <1 second
 - Large docs: 1-5 seconds
 
 **Example:**
+
 ```bash
 python chunker.py --file api_docs.md --type context-aware
 ```
 
 **Output includes:**
+
 - Full chunk text with proper markdown formatting
 - Metadata with parent headers (e.g., `# Overview > ## Features`)
 - Preserved code blocks and tables
@@ -452,18 +510,21 @@ python chunker.py --file api_docs.md --type context-aware
 ### 7. Section-Based Chunker (`section`)
 
 **How it works:**
+
 - Simplest semantic approach: split only at markdown headers
 - Each chunk is one complete section
 - No token-size enforcement (sections can vary widely in size)
 - Ideal for structured documents with clear sections
 
 **When to use:**
+
 - Well-structured markdown with clear sections
 - When each section should be treated as atomic unit
 - Documentation where sections are self-contained
 - When section boundaries are more important than size uniformity
 
 **Process:**
+
 1. Parse markdown headers (`#`, `##`, `###`, etc.)
 2. Split document at header boundaries
 3. Each section becomes one chunk (regardless of size)
@@ -472,6 +533,7 @@ python chunker.py --file api_docs.md --type context-aware
 **Speed:** ⚡⚡⚡ **Very Fast** (simple regex parsing)
 
 **Example:**
+
 ```bash
 python chunker.py --file documentation.md --type section
 ```
@@ -482,30 +544,34 @@ python chunker.py --file documentation.md --type section
 
 ### Comparison Table
 
-| Strategy | Speed | Quality | Semantic Aware | Needs Embeddings | Needs LLM | Best For |
-|----------|-------|---------|----------------|------------------|-----------|----------|
-| **fixed** | ⚡⚡⚡ Very Fast | ⭐ Basic | ❌ No | ❌ No | ❌ No | Quick tests, uniform sizes |
-| **recursive** | ⚡⚡⚡ Very Fast | ⭐⭐⭐ Good | ✅ Partial | ❌ No | ❌ No | **General purpose** (recommended) |
-| **cluster** | ⚡ Moderate | ⭐⭐⭐⭐ Very Good | ✅ Yes | ✅ Yes | ❌ No | Mixed-topic documents |
-| **kamradt** | ⚡ Moderate | ⭐⭐⭐⭐ Very Good | ✅ Yes | ✅ Yes | ❌ No | Long-form content with topic shifts |
-| **llm** | 🐌 Slow | ⭐⭐⭐⭐⭐ Excellent | ✅ Yes | ❌ No | ✅ Yes | **Highest quality** (best results) |
-| **context-aware** | ⚡⚡ Fast | ⭐⭐⭐⭐ Very Good | ✅ Yes | ❌ No | ❌ No | Markdown documentation |
-| **section** | ⚡⚡⚡ Very Fast | ⭐⭐⭐ Good | ✅ Partial | ❌ No | ❌ No | Structured docs with sections |
+| Strategy          | Speed            | Quality              | Semantic Aware | Needs Embeddings | Needs LLM | Best For                            |
+| ----------------- | ---------------- | -------------------- | -------------- | ---------------- | --------- | ----------------------------------- |
+| **fixed**         | ⚡⚡⚡ Very Fast | ⭐ Basic             | ❌ No          | ❌ No            | ❌ No     | Quick tests, uniform sizes          |
+| **recursive**     | ⚡⚡⚡ Very Fast | ⭐⭐⭐ Good          | ✅ Partial     | ❌ No            | ❌ No     | **General purpose** (recommended)   |
+| **cluster**       | ⚡ Moderate      | ⭐⭐⭐⭐ Very Good   | ✅ Yes         | ✅ Yes           | ❌ No     | Mixed-topic documents               |
+| **kamradt**       | ⚡ Moderate      | ⭐⭐⭐⭐ Very Good   | ✅ Yes         | ✅ Yes           | ❌ No     | Long-form content with topic shifts |
+| **llm**           | 🐌 Slow          | ⭐⭐⭐⭐⭐ Excellent | ✅ Yes         | ❌ No            | ✅ Yes    | **Highest quality** (best results)  |
+| **context-aware** | ⚡⚡ Fast        | ⭐⭐⭐⭐ Very Good   | ✅ Yes         | ❌ No            | ❌ No     | Markdown documentation              |
+| **section**       | ⚡⚡⚡ Very Fast | ⭐⭐⭐ Good          | ✅ Partial     | ❌ No            | ❌ No     | Structured docs with sections       |
 
 ### Speed Details
 
 **Very Fast (⚡⚡⚡):** < 1 second for most documents
+
 - fixed, recursive, section
 
 **Fast (⚡⚡):** 1-5 seconds for most documents
+
 - context-aware
 
 **Moderate (⚡):** 10 seconds to 3 minutes (depends on doc size and API rate limits)
+
 - cluster, kamradt
 - Speed limited by embedding generation
 - With 4 Gemini API keys: ~400 RPM (can process ~100 chunks/minute)
 
 **Slow (🐌):** 20 seconds to 10+ minutes (depends on doc size and LLM speed)
+
 - llm
 - Speed limited by LLM generation rate
 - With 4 Gemini API keys: ~40 RPM (slower but higher quality)
@@ -536,13 +602,13 @@ Understanding how to organize your documents in vector stores is crucial for eff
 
 Collections are logical groupings of vectors in a vector database. Different vector stores use different terminology but serve the same purpose:
 
-| Vector Store | Terminology | Description |
-|--------------|-------------|-------------|
-| **Qdrant** | Collection | Logical group of vectors with metadata |
-| **ChromaDB** | Collection | Named group of embeddings |
-| **Supabase/pgvector** | Table | PostgreSQL table with vector column |
-| **Weaviate** | Class | Schema-based data object type |
-| **Pinecone** | Index | Top-level namespace for vectors |
+| Vector Store          | Terminology | Description                            |
+| --------------------- | ----------- | -------------------------------------- |
+| **Qdrant**            | Collection  | Logical group of vectors with metadata |
+| **ChromaDB**          | Collection  | Named group of embeddings              |
+| **Supabase/pgvector** | Table       | PostgreSQL table with vector column    |
+| **Weaviate**          | Class       | Schema-based data object type          |
+| **Pinecone**          | Index       | Top-level namespace for vectors        |
 
 ### Strategy 1: Single Collection (Recommended for Most Use Cases) ⭐
 
@@ -556,6 +622,7 @@ python embedder.py --dir sample-output/context-aware --vector-store qdrant --col
 ```
 
 **Benefits:**
+
 - ✅ **Semantic search across ALL documents** (the main benefit!)
 - ✅ Find related information across different documents
 - ✅ Simpler management - one place to search
@@ -564,6 +631,7 @@ python embedder.py --dir sample-output/context-aware --vector-store qdrant --col
 - ✅ Better results when topics are related
 
 **When to use:**
+
 - Company knowledge base (search all documents together)
 - Documentation site (search across all guides)
 - Customer support articles
@@ -575,6 +643,7 @@ python embedder.py --dir sample-output/context-aware --vector-store qdrant --col
 **How metadata filtering works:**
 
 Each chunk automatically includes metadata:
+
 ```json
 {
   "text": "The company's return policy allows...",
@@ -589,6 +658,7 @@ Each chunk automatically includes metadata:
 ```
 
 Search with filters (vector store dependent):
+
 ```python
 # Search only in specific document
 results = vector_store.search(
@@ -631,6 +701,7 @@ python embedder.py --dir medical_docs --vector-store qdrant --collection medical
 ```
 
 **Benefits:**
+
 - ✅ Complete data isolation (security requirement)
 - ✅ Different configurations per collection
 - ✅ Can use different embedding models
@@ -638,6 +709,7 @@ python embedder.py --dir medical_docs --vector-store qdrant --collection medical
 - ✅ Access control at collection level
 
 **When to use:**
+
 - **Multi-tenant SaaS** - One collection per customer (critical for security)
 - **Different embedding models** - Different domains need different embeddings
 - **Access control** - Different teams/permissions per collection
@@ -686,18 +758,19 @@ python embedder.py --dir sample-output/cluster --collection test_all --vector-st
 
 ### Vector Store Capabilities Comparison
 
-| Feature | Qdrant | ChromaDB | Supabase/pgvector | Weaviate | Pinecone |
-|---------|--------|----------|-------------------|----------|----------|
-| **Multiple Collections** | ✅ Unlimited | ✅ Unlimited | ✅ Many tables | ✅ Many classes | ✅ Limited (paid) |
-| **Metadata Filtering** | ✅ Rich filters | ✅ Basic WHERE | ✅ Full SQL | ✅ GraphQL | ✅ Rich filters |
-| **Collection Limits** | No practical limit | No practical limit | DB table limit | No limit | Plan dependent |
-| **Cross-Collection Search** | ❌ Not supported | ❌ Not supported | ✅ SQL JOINs | ✅ Cross-refs | ❌ Not supported |
-| **Dynamic Schema** | ✅ Flexible | ✅ Flexible | ⚠️ Table schema | ✅ Flexible | ✅ Flexible |
-| **Metadata Types** | JSON objects | Dict/JSON | PostgreSQL types | GraphQL types | JSON metadata |
+| Feature                     | Qdrant             | ChromaDB           | Supabase/pgvector | Weaviate        | Pinecone          |
+| --------------------------- | ------------------ | ------------------ | ----------------- | --------------- | ----------------- |
+| **Multiple Collections**    | ✅ Unlimited       | ✅ Unlimited       | ✅ Many tables    | ✅ Many classes | ✅ Limited (paid) |
+| **Metadata Filtering**      | ✅ Rich filters    | ✅ Basic WHERE     | ✅ Full SQL       | ✅ GraphQL      | ✅ Rich filters   |
+| **Collection Limits**       | No practical limit | No practical limit | DB table limit    | No limit        | Plan dependent    |
+| **Cross-Collection Search** | ❌ Not supported   | ❌ Not supported   | ✅ SQL JOINs      | ✅ Cross-refs   | ❌ Not supported  |
+| **Dynamic Schema**          | ✅ Flexible        | ✅ Flexible        | ⚠️ Table schema   | ✅ Flexible     | ✅ Flexible       |
+| **Metadata Types**          | JSON objects       | Dict/JSON          | PostgreSQL types  | GraphQL types   | JSON metadata     |
 
 ### Best Practices
 
 #### ✅ DO:
+
 - **Use single collection for related documents** - Better semantic search and discovery
 - **Use metadata extensively** - Filter without creating multiple collections
 - **Name collections descriptively** - `customer_docs` not `collection_1`
@@ -706,6 +779,7 @@ python embedder.py --dir sample-output/cluster --collection test_all --vector-st
 - **Plan metadata schema early** - Consistent metadata enables better filtering
 
 #### ❌ DON'T:
+
 - **Don't create collection per document** - Loses cross-document semantic search
 - **Don't use collections for simple filtering** - Use metadata instead
 - **Don't mix different embedding models in one collection** - Vectors won't be comparable
@@ -737,6 +811,7 @@ python embedder.py --dir sample-output/cluster --collection test_all --vector-st
 ### Collection Naming Conventions
 
 **Good names:**
+
 ```bash
 --collection company_knowledge_base
 --collection customer_support_articles
@@ -746,6 +821,7 @@ python embedder.py --dir sample-output/cluster --collection test_all --vector-st
 ```
 
 **Avoid:**
+
 ```bash
 --collection collection1          # Too generic
 --collection test                 # Not descriptive
@@ -756,6 +832,7 @@ python embedder.py --dir sample-output/cluster --collection test_all --vector-st
 ### When to Refactor
 
 **Signs you need to split collections:**
+
 1. Different teams need different access permissions
 2. Embedding model changes for a subset of documents
 3. Multi-tenant requirements emerge
@@ -763,6 +840,7 @@ python embedder.py --dir sample-output/cluster --collection test_all --vector-st
 5. Performance degrades due to collection size (rare with modern vector DBs)
 
 **Signs you should merge collections:**
+
 1. Frequently searching across multiple collections
 2. Related documents in different collections
 3. Duplicate metadata management
@@ -773,33 +851,39 @@ python embedder.py --dir sample-output/cluster --collection test_all --vector-st
 ## Key Features
 
 ### Modular & Extensible
+
 - Plugin-based architecture for easy additions
 - Add new chunkers, embedders, LLMs, or vector stores by extending base classes
 - Consistent interfaces across all components
 
 ### Multiple Chunking Strategies
+
 - 7 different chunking types for various use cases
 - From simple fixed-size to advanced LLM semantic analysis
 - Support for markdown, PDF, text, and DOCX files
 
 ### Multi-Provider Support
+
 - Switch between providers without code changes
 - Use free local models (Ollama) or cloud APIs
 - Automatic API key rotation for rate limit handling (Gemini)
 
 ### Production-Ready Vector Storage
+
 - 6 vector database integrations
 - Automatic collection/table creation
 - Batch insertion for efficiency
 - Support for local and cloud deployments
 
 ### Simple CLI Interface
+
 - Two main commands: `chunker.py` and `embedder.py`
 - Intuitive command-line arguments
 - Verbose mode for debugging
 - JSON output for integration
 
 ### Automatic API Key Rotation
+
 - Rotates between multiple API keys automatically (Gemini)
 - Avoids rate limits seamlessly
 - Failover on quota errors
@@ -944,9 +1028,18 @@ python embedder.py --file document.md --collection my_documents --verbose
 python chunker.py --file document.md --type llm --output chunks.json
 python embedder.py --chunks chunks.json --vector-store chromadb
 
-# Batch workflow: process directory of files
+# Batch workflow: process directory of files (recursive by default)
 python chunker.py --dir sample-md-files --output-dir chunks_output
 python embedder.py --dir chunks_output --vector-store chromadb
+
+# Use --no-recursive to process only top-level directory
+python chunker.py --dir sample-md-files --output-dir chunks_output --no-recursive
+
+# Use --batch for batch mode (load all chunks first, then embed)
+python embedder.py --dir chunks_output --vector-store chromadb --batch
+
+# Use --clear to clear collection before adding new data
+python embedder.py --dir chunks_output --vector-store chromadb --clear
 ```
 
 ### Different Vector Stores
@@ -994,16 +1087,19 @@ See [examples.sh](examples.sh) for more usage examples.
 ## API Rate Limits
 
 ### Google Gemini (Free Tier)
+
 - Embeddings: 100 RPM, 30K TPM, 1K RPD per key
 - Generation: 10 RPM, 250K TPM, 250 RPD per key
-- **Solution**: Use multiple API keys (GEMINI_API_KEY_1, _2, _3, etc.) for automatic rotation
+- **Solution**: Use multiple API keys (GEMINI_API_KEY_1, \_2, \_3, etc.) for automatic rotation
 - With 4 keys: 40 RPM generation, 400 RPM embeddings
 
 ### OpenAI
+
 - Varies by tier and model
 - Check: https://platform.openai.com/account/rate-limits
 
 ### Vector Store Limits
+
 - **ChromaDB Cloud**: Check plan at https://www.trychroma.com/
 - **Supabase Free**: 500 MB database, 2 GB bandwidth
 - **Qdrant Cloud**: Check plan at https://cloud.qdrant.io/
@@ -1013,37 +1109,49 @@ See [examples.sh](examples.sh) for more usage examples.
 ## Troubleshooting
 
 ### "No LLM provider configured"
+
 **Solution**: Add at least one LLM provider to `.env`:
+
 - For Gemini: `GEMINI_API_KEY_1=your_key`
 - For OpenAI: `OPENAI_API_KEY=your_key`
 - For Ollama: `OLLAMA_BASE_URL=http://localhost:11434`
 
 ### "Resource exhausted (quota)" (Gemini)
+
 **Solution**:
+
 - Add more API keys for rotation: `GEMINI_API_KEY_2`, `GEMINI_API_KEY_3`, etc.
 - System automatically rotates on rate limits
 - Or wait for quota reset (midnight PST)
 
 ### "ModuleNotFoundError"
+
 **Solution**: Install missing dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### "Connection refused" (Ollama)
+
 **Solution**: Start Ollama server:
+
 ```bash
 ollama serve
 ```
 
 ### "Table does not exist" (Supabase/pgvector)
+
 **Solution**:
+
 - Tables are auto-created on first use
 - Check database permissions and pgvector extension is enabled
 - Verify `.env` credentials
 
 ### Vector store connection issues
+
 **Solution**:
+
 1. Verify credentials in `.env`
 2. Check network connectivity
 3. For cloud services, check dashboard status
@@ -1088,6 +1196,7 @@ See existing implementations for examples.
 ## Legacy Implementation
 
 The original v1.0 implementation is preserved in the `old-files/` directory:
+
 - `old-files/llm_semantic_chunker/` - Original LLM chunkers
 - `old-files/other_chunkers/` - Original alternative methods
 - `old-files/utils/` - Original utilities
@@ -1116,11 +1225,13 @@ Contributions are welcome! To add support for new providers:
 ## Support
 
 **For setup help:**
+
 - See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed configuration
 - Run `python chunker.py --help` or `python embedder.py --help`
 - Check [examples.sh](examples.sh) for usage patterns
 
 **For issues:**
+
 - Check troubleshooting section above
 - Review [CLAUDE.md](CLAUDE.md) for architecture details
 - Open an issue on GitHub

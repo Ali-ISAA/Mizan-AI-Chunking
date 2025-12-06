@@ -18,7 +18,7 @@ from src.chunkers import get_chunker
 from src.utils import get_file_text, Config
 
 
-def get_files_to_process(file_path: str = None, dir_path: str = None) -> List[Path]:
+def get_files_to_process(file_path: str = None, dir_path: str = None, recursive: bool = True) -> List[Path]:
     """Get list of files to process from file or directory"""
     files = []
 
@@ -37,7 +37,10 @@ def get_files_to_process(file_path: str = None, dir_path: str = None) -> List[Pa
 
         # Get all supported file types
         for ext in ['*.md', '*.txt', '*.pdf', '*.docx']:
-            files.extend(path.glob(ext))
+            if recursive:
+                files.extend(path.rglob(ext))
+            else:
+                files.extend(path.glob(ext))
 
         if not files:
             print(f"Error: No supported files found in {dir_path}", file=sys.stderr)
@@ -66,7 +69,26 @@ def process_file(file_path: Path, args, config, chunker):
             'chunker_type': args.type,
             'chunk_size': args.chunk_size,
             'chunk_overlap': args.overlap
+            
         }
+
+        # If markdown, parse YAML front matter and append to metadata, and strip it from text
+        if str(file_path).lower().endswith('.md'):
+            import re
+            try:
+                # Match YAML front matter at the top of the file
+                match = re.match(r'^---\s*\n(.*?)\n---\s*\n?', text, re.DOTALL)
+                if match:
+                    yaml_str = match.group(1)
+                    import yaml
+                    yaml_meta = yaml.safe_load(yaml_str)
+                    if isinstance(yaml_meta, dict):
+                        metadata.update(yaml_meta)
+                    # Remove front matter from text
+                    text = text[match.end():]
+            except Exception as e:
+                if args.verbose:
+                    print(f"  ✗ Error parsing markdown metadata: {e}", file=sys.stderr)
 
         chunks = chunker.chunk(text, metadata=metadata)
 
@@ -149,6 +171,9 @@ Examples:
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
 
+    parser.add_argument('--no-recursive', action='store_true',
+                       help='Only search top-level directory (do not recurse into subdirectories)')
+
     # Configuration
     parser.add_argument('--env-file',
                        help='Path to .env file (default: .env in project root)')
@@ -167,7 +192,7 @@ Examples:
         sys.exit(1)
 
     # Get files to process
-    files = get_files_to_process(args.file, args.dir)
+    files = get_files_to_process(args.file, args.dir, recursive=not args.no_recursive)
 
     print(f"\n{'='*60}")
     print(f"  Chunking Documents")
