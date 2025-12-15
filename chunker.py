@@ -12,10 +12,11 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from src.chunkers import get_chunker
 from src.utils import get_file_text, Config
+from src.utils.report import JobReport
 
 
 def get_files_to_process(file_path: str = None, dir_path: str = None, recursive: bool = True) -> List[Path]:
@@ -174,6 +175,9 @@ Examples:
     parser.add_argument('--no-recursive', action='store_true',
                        help='Only search top-level directory (do not recurse into subdirectories)')
 
+    parser.add_argument('--log', action='store_true',
+                       help='Save logs and report to logs/ directory')
+
     # Configuration
     parser.add_argument('--env-file',
                        help='Path to .env file (default: .env in project root)')
@@ -228,6 +232,18 @@ Examples:
         output_dir = Path(args.output_dir)
         output_dir.mkdir(exist_ok=True, parents=True)
 
+    # Initialize report
+    report: Optional[JobReport] = None
+    if args.log and args.dir:
+        report = JobReport('chunker', log_to_file=True)
+        report.set_config(
+            input_dir=args.dir,
+            output_dir=args.output_dir,
+            chunker_type=args.type,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap
+        )
+
     # Process files
     stats = {'success': 0, 'failed': 0, 'total_chunks': 0}
 
@@ -242,7 +258,16 @@ Examples:
 
             # Save to file
             if not args.no_save:
-                output_file = output_dir / f"{file_path.stem}_chunks.json"
+                # Preserve directory structure when processing a directory
+                if args.dir:
+                    # Get relative path from input directory
+                    rel_path = file_path.relative_to(args.dir)
+                    # Create output subdirectory mirroring input structure
+                    output_subdir = output_dir / rel_path.parent
+                    output_subdir.mkdir(parents=True, exist_ok=True)
+                    output_file = output_subdir / f"{file_path.stem}_chunks.json"
+                else:
+                    output_file = output_dir / f"{file_path.stem}_chunks.json"
 
                 output_data = {
                     'source_file': str(file_path),
@@ -257,25 +282,37 @@ Examples:
                     with open(output_file, 'w', encoding='utf-8') as f:
                         json.dump(output_data, f, indent=2, ensure_ascii=False)
                     print(f"  ✓ Saved to {output_file.name}")
+                    if report:
+                        report.add_success(str(file_path), len(chunks))
                 except Exception as e:
                     print(f"  ✗ Error saving: {e}", file=sys.stderr)
                     stats['failed'] += 1
+                    if report:
+                        report.add_failure(str(file_path), str(e), "save")
+            else:
+                if report:
+                    report.add_success(str(file_path), len(chunks))
         else:
             stats['failed'] += 1
+            if report:
+                report.add_failure(str(file_path), "Chunking failed", "chunk")
 
         print()
 
     # Summary
-    print(f"{'='*60}")
-    print(f"  Summary")
-    print(f"{'='*60}")
-    print(f"  Total files:      {len(files)}")
-    print(f"  Successful:       {stats['success']}")
-    print(f"  Failed:           {stats['failed']}")
-    print(f"  Total chunks:     {stats['total_chunks']}")
-    if not args.no_save:
-        print(f"  Output directory: {args.output_dir}/")
-    print()
+    if report:
+        report.print_summary()
+    else:
+        print(f"{'='*60}")
+        print(f"  Summary")
+        print(f"{'='*60}")
+        print(f"  Total files:      {len(files)}")
+        print(f"  Successful:       {stats['success']}")
+        print(f"  Failed:           {stats['failed']}")
+        print(f"  Total chunks:     {stats['total_chunks']}")
+        if not args.no_save:
+            print(f"  Output directory: {args.output_dir}/")
+        print()
 
 
 if __name__ == '__main__':

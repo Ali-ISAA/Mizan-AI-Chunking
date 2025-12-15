@@ -41,18 +41,25 @@ class GeminiLLM(BaseLLM):
         if not api_keys:
             raise ValueError("No Gemini API keys provided")
 
-        # Initialize key manager
-        self.key_manager = APIKeyManager(api_keys)
+        # Store config for model recreation
+        self._model_name = model_name
+        self._temperature = temperature
+        self._max_tokens = max_tokens
 
-        # Configure with first key
-        genai.configure(api_key=self.key_manager.get_current_key())
+        # Initialize key manager with callback to reconfigure
+        self.key_manager = APIKeyManager(api_keys, on_key_change=self._reconfigure_client)
 
-        # Initialize model
+        # Configure with first key and create model
+        self._reconfigure_client(self.key_manager.get_current_key())
+
+    def _reconfigure_client(self, api_key: str):
+        """Reconfigure genai with new API key and recreate model"""
+        genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(
-            model_name,
+            self._model_name,
             generation_config=genai.types.GenerationConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens
+                temperature=self._temperature,
+                max_output_tokens=self._max_tokens
             )
         )
 
@@ -80,9 +87,9 @@ class GeminiLLM(BaseLLM):
         return response.text
 
     def generate_with_retry(self, prompt: str, system_prompt: Optional[str] = None,
-                           max_retries: int = 3) -> str:
+                           max_retries: int = None) -> str:
         """
-        Generate text with automatic retry on rate limits
+        Generate text with automatic retry on rate limits and invalid keys
 
         Parameters:
         -----------
@@ -90,8 +97,8 @@ class GeminiLLM(BaseLLM):
             User prompt
         system_prompt : str, optional
             System prompt
-        max_retries : int
-            Maximum number of retries
+        max_retries : int, optional
+            Maximum number of retries (default: number of keys * 2)
 
         Returns:
         --------
@@ -99,15 +106,9 @@ class GeminiLLM(BaseLLM):
             Generated text
         """
         def generate_func():
-            # Reconfigure with current key before each attempt
-            self._reconfigure_key()
             return self.generate(prompt, system_prompt)
 
         return self.key_manager.execute_with_retry(
             generate_func,
             max_retries=max_retries
         )
-
-    def _reconfigure_key(self):
-        """Reconfigure with current key"""
-        genai.configure(api_key=self.key_manager.get_current_key())

@@ -13,12 +13,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from src.chunkers import get_chunker
 from src.embedders import get_embedder
 from src.vector_stores import get_vector_store
 from src.utils import get_file_text, Config
+from src.utils.report import JobReport
 
 
 def get_chunk_files(dir_path: str, recursive: bool = True) -> List[Path]:
@@ -117,7 +118,9 @@ def process_single_file(args, config, embedder, vector_store):
     return chunks, source_file
 
 
-def process_directory_incremental(dir_path: str, args, embedder, vector_store, recursive: bool = True):
+def process_directory_incremental(dir_path: str, args, embedder, vector_store,
+                                   recursive: bool = True, report: Optional[JobReport] = None,
+                                   start_from: int = 1):
     """
     Process all chunk files in a directory INCREMENTALLY.
     Each document is: loaded → embedded → stored immediately.
@@ -127,18 +130,25 @@ def process_directory_incremental(dir_path: str, args, embedder, vector_store, r
 
     print(f"\nFound {len(chunk_files)} chunk file(s) in {dir_path}")
     print(f"All chunks will be stored in collection: {vector_store.collection_name}")
-    print("Processing mode: INCREMENTAL (per-document)\n")
+    print("Processing mode: INCREMENTAL (per-document)")
+    if start_from > 1:
+        print(f"Resuming from file #{start_from} (skipping {start_from - 1} files)")
+    print()
 
     stats = {
         'success': 0,
         'failed': 0,
+        'skipped': start_from - 1,
         'total_chunks': 0,
-        'total_embedded': 0,
-        'failed_files': []
+        'total_embedded': 0
     }
 
     # Process each file incrementally
     for i, chunk_file in enumerate(chunk_files, 1):
+        # Skip files before start_from
+        if i < start_from:
+            continue
+
         print(f"[{i}/{len(chunk_files)}] {chunk_file.name}")
 
         # Load chunks for this document
@@ -146,31 +156,40 @@ def process_directory_incremental(dir_path: str, args, embedder, vector_store, r
 
         if not chunks:
             stats['failed'] += 1
-            stats['failed_files'].append(chunk_file.name)
+            if report:
+                report.add_failure(str(chunk_file), "No chunks found", "load")
             print("  ✗ Skipped (no chunks)\n")
+            continue
+
+        # Check if file exceeds max chunks limit
+        max_chunks = getattr(args, 'max_chunks', 500)
+        if max_chunks > 0 and len(chunks) > max_chunks:
+            stats['failed'] += 1
+            if report:
+                report.add_failure(str(chunk_file), f"Too many chunks: {len(chunks)} > {max_chunks}", "skip")
+            print(f"  ✓ Loaded {len(chunks)} chunks")
+            print(f"  ⚠ Skipped (exceeds --max-chunks {max_chunks})\n")
             continue
 
         print(f"  ✓ Loaded {len(chunks)} chunks")
 
         # Generate embeddings for this document
         try:
-            print("  ⚙ Generating embeddings...")
             texts = [chunk['text'] for chunk in chunks]
             embeddings = embedder.embed_batch(texts)
             print(f"  ✓ Generated {len(embeddings)} embeddings")
         except Exception as e:
             stats['failed'] += 1
-            stats['failed_files'].append(chunk_file.name)
-            print(f"  ✗ Embedding failed: {e}")
+            if report:
+                report.add_failure(str(chunk_file), str(e), "embedding")
+            print(f"  ✗ Embedding failed")
             if args.verbose:
-                import traceback
-                traceback.print_exc()
+                print(f"    Error: {e}")
             print()
             continue
 
         # Store immediately in vector store
         try:
-            print(f"  ⚙ Storing in {vector_store.__class__.__name__}...")
             metadata_list = [chunk['metadata'] for chunk in chunks]
 
             success = vector_store.insert(
@@ -184,18 +203,21 @@ def process_directory_incremental(dir_path: str, args, embedder, vector_store, r
                 stats['success'] += 1
                 stats['total_chunks'] += len(chunks)
                 stats['total_embedded'] += len(embeddings)
+                if report:
+                    report.add_success(str(chunk_file), len(chunks), len(embeddings))
             else:
                 stats['failed'] += 1
-                stats['failed_files'].append(chunk_file.name)
+                if report:
+                    report.add_failure(str(chunk_file), "Insert returned false", "storage")
                 print("  ✗ Storage failed")
 
         except Exception as e:
             stats['failed'] += 1
-            stats['failed_files'].append(chunk_file.name)
-            print(f"  ✗ Storage error: {e}")
+            if report:
+                report.add_failure(str(chunk_file), str(e), "storage")
+            print(f"  ✗ Storage error")
             if args.verbose:
-                import traceback
-                traceback.print_exc()
+                print(f"    Error: {e}")
 
         print()
 
@@ -287,6 +309,15 @@ Examples:
 
     parser.add_argument('--batch', action='store_true',
                        help='Batch mode: load all chunks first, then embed and store (uses more memory)')
+
+    parser.add_argument('--log', action='store_true',
+                       help='Save logs and report to logs/ directory')
+
+    parser.add_argument('--start-from', type=int, default=1,
+                       help='Start processing from file number N (1-indexed, for resuming interrupted jobs)')
+
+    parser.add_argument('--max-chunks', type=int, default=500,
+                       help='Skip files with more than N chunks (default: 500, set to 0 to disable)')
 
     args = parser.parse_args()
 
@@ -384,6 +415,17 @@ Examples:
             traceback.print_exc()
         sys.exit(1)
 
+    # Initialize report
+    report = JobReport('embedder', log_to_file=args.log) if args.dir else None
+    if report:
+        report.set_config(
+            input_dir=args.dir,
+            vector_store=vector_store_type,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
+            collection=collection_name
+        )
+
     # Process based on input type
     if args.dir:
         # Directory processing
@@ -474,27 +516,32 @@ Examples:
 
         else:
             # INCREMENTAL MODE (default) - Process each file immediately
-            dir_stats = process_directory_incremental(args.dir, args, embedder, vector_store, recursive=recursive)
+            dir_stats = process_directory_incremental(args.dir, args, embedder, vector_store,
+                                                       recursive=recursive, report=report,
+                                                       start_from=args.start_from)
 
-            # Summary for directory processing
-            print(f"{'='*60}")
-            print("  Summary")
-            print(f"{'='*60}")
-            print(f"  Files processed:  {dir_stats['success']}/{dir_stats['success'] + dir_stats['failed']}")
-            if dir_stats['failed'] > 0:
-                print(f"  Failed:           {dir_stats['failed']}")
-                if args.verbose and dir_stats['failed_files']:
-                    print(f"  Failed files:     {', '.join(dir_stats['failed_files'])}")
-            print(f"  Total chunks:     {dir_stats['total_chunks']}")
-
+            # Get final vector count
             try:
                 final_count = vector_store.get_count()
-                print(f"  Total vectors:    {final_count}")
             except Exception:
-                pass  # Some vector stores might not support count
+                final_count = None
 
-            print(f"  Collection:       {collection_name}")
-            print(f"  Vector store:     {vector_store_type}")
+            # Print summary using report if available
+            if report:
+                report.print_summary()
+            else:
+                print(f"{'='*60}")
+                print("  Summary")
+                print(f"{'='*60}")
+                print(f"  Files processed:  {dir_stats['success']}/{dir_stats['success'] + dir_stats['failed']}")
+                if dir_stats['failed'] > 0:
+                    print(f"  Failed:           {dir_stats['failed']}")
+                print(f"  Total chunks:     {dir_stats['total_chunks']}")
+                if final_count:
+                    print(f"  Total vectors:    {final_count}")
+                print(f"  Collection:       {collection_name}")
+                print(f"  Vector store:     {vector_store_type}")
+
             print(f"\n✅ Complete! Collection '{collection_name}' ready for search.")
 
     else:

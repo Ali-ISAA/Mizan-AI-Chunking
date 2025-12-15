@@ -25,7 +25,8 @@ class Config:
         else:
             env_path = Path(__file__).parent.parent.parent / ".env"
 
-        load_dotenv(dotenv_path=env_path)
+        # Use override=True so .env values take precedence over shell environment
+        load_dotenv(dotenv_path=env_path, override=True)
         self._validate_config()
 
     def _validate_config(self):

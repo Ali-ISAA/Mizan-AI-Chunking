@@ -3,12 +3,18 @@ Google Gemini embedding provider
 """
 
 import time
+import random
+import sys
 from typing import List, Union, Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import google.generativeai as genai
 
 from .base import BaseEmbedder
 from ..utils.api_key_manager import APIKeyManager
 from ..utils.config import get_config
+
+# Timeout for each embedding call (seconds)
+EMBED_TIMEOUT = 30
 
 
 class GeminiEmbedder(BaseEmbedder):
@@ -38,11 +44,15 @@ class GeminiEmbedder(BaseEmbedder):
         if not api_keys:
             raise ValueError("No Gemini API keys provided")
 
-        # Initialize key manager
-        self.key_manager = APIKeyManager(api_keys)
+        # Initialize key manager with callback to reconfigure genai
+        self.key_manager = APIKeyManager(api_keys, on_key_change=self._reconfigure_client)
 
         # Configure with first key
-        genai.configure(api_key=self.key_manager.get_current_key())
+        self._reconfigure_client(self.key_manager.get_current_key())
+
+    def _reconfigure_client(self, api_key: str):
+        """Reconfigure genai with new API key"""
+        genai.configure(api_key=api_key)
 
     def embed(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
         """
@@ -64,21 +74,29 @@ class GeminiEmbedder(BaseEmbedder):
             return self.embed_batch(text)
 
     def _embed_single(self, text: str) -> List[float]:
-        """Embed single text"""
+        """Embed single text with timeout"""
         def embed_func():
             # Truncate if too long
             truncated_text = text[:10000] if len(text) > 10000 else text
 
-            result = genai.embed_content(
-                model=self.model_name,
-                content=truncated_text,
-                task_type="retrieval_document"
-            )
-            return result['embedding']
+            # Use ThreadPoolExecutor for timeout support
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    genai.embed_content,
+                    model=self.model_name,
+                    content=truncated_text,
+                    task_type="retrieval_document"
+                )
+                try:
+                    result = future.result(timeout=EMBED_TIMEOUT)
+                    return result['embedding']
+                except FuturesTimeoutError:
+                    raise TimeoutError(f"Embedding timed out after {EMBED_TIMEOUT}s - rate_limit")
 
         return self.key_manager.execute_with_retry(embed_func)
 
-    def embed_batch(self, texts: List[str], batch_size: int = 100) -> List[List[float]]:
+    def embed_batch(self, texts: List[str], batch_size: int = 100,
+                    show_progress: bool = True) -> List[List[float]]:
         """
         Generate embeddings for batch of texts
 
@@ -88,6 +106,8 @@ class GeminiEmbedder(BaseEmbedder):
             List of texts to embed
         batch_size : int
             Batch size for processing
+        show_progress : bool
+            Show progress indicator for large batches
 
         Returns:
         --------
@@ -95,16 +115,28 @@ class GeminiEmbedder(BaseEmbedder):
             List of embeddings
         """
         all_embeddings = []
+        total = len(texts)
+        progress_interval = max(50, total // 20)  # Show progress every 50 or 5%
 
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            print(f"  Embedding batch {i // batch_size + 1}/{(len(texts) - 1) // batch_size + 1}")
+        for idx, text in enumerate(texts):
+            embedding = self._embed_single(text)
+            all_embeddings.append(embedding)
 
-            for text in batch:
-                embedding = self._embed_single(text)
-                all_embeddings.append(embedding)
+            # Show progress for large batches
+            if show_progress and total > 100 and (idx + 1) % progress_interval == 0:
+                pct = ((idx + 1) / total) * 100
+                sys.stdout.write(f"\r    Embedding: {idx + 1}/{total} ({pct:.0f}%)")
+                sys.stdout.flush()
 
-                # Rate limiting: 100 RPM = 0.6s per request
-                time.sleep(0.65)
+            # Rate limiting with jitter to avoid thundering herd
+            # Base: 1.0s (safe for 60 RPM per key with 2 keys = 120 RPM total)
+            # Jitter: ±0.2s
+            delay = 1.0 + random.uniform(-0.2, 0.2)
+            time.sleep(delay)
+
+        # Clear progress line
+        if show_progress and total > 100:
+            sys.stdout.write("\r" + " " * 50 + "\r")
+            sys.stdout.flush()
 
         return all_embeddings

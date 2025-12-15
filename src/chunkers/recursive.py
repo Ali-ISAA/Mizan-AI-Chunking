@@ -131,16 +131,26 @@ class RecursiveChunker(BaseChunker):
                 if current_chunk:
                     chunks.append(separator.join(current_chunk))
 
-                    # Handle overlap
-                    while current_tokens > self.chunk_overlap and len(current_chunk) > 1:
-                        removed = current_chunk.pop(0)
-                        current_tokens -= self.count_tokens(removed) + sep_tokens
+                    # Handle overlap - keep some content for context
+                    overlap_tokens = 0
+                    overlap_chunk = []
+                    # Work backwards to keep overlap content
+                    for item in reversed(current_chunk):
+                        item_tokens = self.count_tokens(item)
+                        if overlap_tokens + item_tokens <= self.chunk_overlap:
+                            overlap_chunk.insert(0, item)
+                            overlap_tokens += item_tokens + sep_tokens
+                        else:
+                            break
+
+                    current_chunk = overlap_chunk
+                    current_tokens = overlap_tokens
 
                 current_chunk.append(split)
-                current_tokens = split_tokens
+                current_tokens += split_tokens + (sep_tokens if len(current_chunk) > 1 else 0)
             else:
                 current_chunk.append(split)
-                current_tokens += split_tokens + (sep_tokens if current_chunk else 0)
+                current_tokens += split_tokens + (sep_tokens if len(current_chunk) > 1 else 0)
 
         if current_chunk:
             chunks.append(separator.join(current_chunk))
