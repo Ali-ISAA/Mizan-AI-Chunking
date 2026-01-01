@@ -105,5 +105,88 @@ class BaseVectorStore(ABC):
         """
         pass
 
+    def scroll(self, offset: int = 0, limit: int = 50,
+               filters: Optional[Dict] = None) -> Tuple[List[Dict], int]:
+        """
+        Paginate through all vectors in collection.
+
+        Parameters:
+        -----------
+        offset : int
+            Number of records to skip
+        limit : int
+            Maximum number of records to return
+        filters : Dict, optional
+            Metadata filters
+
+        Returns:
+        --------
+        Tuple[List[Dict], int]
+            (results, total_count) - results contain id, text, metadata
+        """
+        raise NotImplementedError(
+            f"scroll() not implemented for {self.__class__.__name__}. "
+            "This store does not support chunk browsing yet."
+        )
+
+    def get_by_id(self, point_id: str) -> Optional[Dict]:
+        """
+        Get a single vector by its ID.
+
+        Parameters:
+        -----------
+        point_id : str
+            The vector/point ID
+
+        Returns:
+        --------
+        Optional[Dict]
+            Vector data with id, text, metadata, or None if not found
+        """
+        raise NotImplementedError(
+            f"get_by_id() not implemented for {self.__class__.__name__}. "
+            "This store does not support individual chunk retrieval yet."
+        )
+
+    def get_metadata_fields(self, sample_size: int = 100) -> List[Dict]:
+        """
+        Get available metadata fields by sampling vectors.
+
+        Parameters:
+        -----------
+        sample_size : int
+            Number of vectors to sample for field discovery
+
+        Returns:
+        --------
+        List[Dict]
+            List of metadata field info with name, type, sample_values
+        """
+        try:
+            results, _ = self.scroll(limit=sample_size)
+        except NotImplementedError:
+            return []
+
+        fields = {}
+        for result in results:
+            for key, val in result.get('metadata', {}).items():
+                if key not in fields:
+                    fields[key] = {
+                        'name': key,
+                        'type': type(val).__name__,
+                        'samples': set()
+                    }
+                if len(fields[key]['samples']) < 5:
+                    fields[key]['samples'].add(str(val)[:50])
+
+        return [
+            {
+                'name': f['name'],
+                'type': f['type'],
+                'sample_values': list(f['samples'])
+            }
+            for f in fields.values()
+        ]
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(collection={self.collection_name}, dim={self.dimension})"

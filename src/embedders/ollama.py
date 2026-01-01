@@ -40,6 +40,14 @@ class OllamaEmbedder(BaseEmbedder):
         # Initialize client
         self.client = ollama.Client(host=self.base_url)
 
+    def _truncate_text(self, text: str, max_chars: int = 2000) -> str:
+        """Truncate text to fit within model context limit (conservative limit for safety)."""
+        if len(text) <= max_chars:
+            return text
+        # Truncate and add indicator
+        print(f"    Warning: Truncating text from {len(text)} to {max_chars} chars for embedding")
+        return text[:max_chars] + "..."
+
     def embed(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
         """
         Generate embeddings for text(s)
@@ -55,9 +63,10 @@ class OllamaEmbedder(BaseEmbedder):
             Single embedding or list of embeddings
         """
         if isinstance(text, str):
+            truncated = self._truncate_text(text)
             response = self.client.embeddings(
                 model=self.model_name,
-                prompt=text
+                prompt=truncated
             )
             return response['embedding']
         else:
@@ -87,9 +96,10 @@ class OllamaEmbedder(BaseEmbedder):
 
             # Ollama doesn't support batch embedding, so we embed one at a time
             for text in batch:
+                truncated = self._truncate_text(text)
                 response = self.client.embeddings(
                     model=self.model_name,
-                    prompt=text
+                    prompt=truncated
                 )
                 all_embeddings.append(response['embedding'])
 

@@ -15,7 +15,8 @@ class LLMSemanticChunker(BaseChunker):
     """Uses LLM to intelligently determine chunk boundaries based on semantics"""
 
     def __init__(self, chunk_size: int = 512, chunk_overlap: int = 0,
-                 llm_provider: Optional[str] = None, llm_model: Optional[str] = None):
+                 llm_provider: Optional[str] = None, llm_model: Optional[str] = None,
+                 base_url: Optional[str] = None, **kwargs):
         """
         Initialize LLM semantic chunker
 
@@ -29,6 +30,10 @@ class LLMSemanticChunker(BaseChunker):
             LLM provider (loads from config if None)
         llm_model : str, optional
             LLM model name (loads from config if None)
+        base_url : str, optional
+            Base URL for the LLM provider (e.g., for Ollama)
+        **kwargs
+            Additional arguments (ignored for compatibility)
         """
         super().__init__(chunk_size, chunk_overlap)
 
@@ -37,8 +42,13 @@ class LLMSemanticChunker(BaseChunker):
         self.llm_provider = llm_provider or config.llm_provider
         self.llm_model = llm_model or config.llm_model
 
+        # Build LLM kwargs
+        llm_kwargs = {"temperature": 0.0}
+        if base_url:
+            llm_kwargs["base_url"] = base_url
+
         # Initialize LLM with temperature=0 for deterministic chunking
-        self.llm = get_llm(self.llm_provider, self.llm_model, temperature=0.0)
+        self.llm = get_llm(self.llm_provider, self.llm_model, **llm_kwargs)
 
     def chunk(self, text: str, metadata: Optional[Dict] = None) -> List[Dict]:
         """
@@ -152,8 +162,8 @@ Return ONLY a JSON array of split points (character indices where splits should 
 This means split at character 150, 430, and 680."""
 
         # Determine how much text to send (balance between context and LLM limits)
-        # Most LLMs can handle 8K-16K tokens, so use up to 10000 chars (~2500 tokens)
-        max_chars = 10000
+        # Use conservative limit of 4000 chars (~1000 tokens) to fit most models
+        max_chars = 4000
         text_to_analyze = section_text[:max_chars]
         is_truncated = len(section_text) > max_chars
 
@@ -198,7 +208,11 @@ Return only the JSON array of split indices."""
                 return self._fallback_split(section_text)
 
         except Exception as e:
-            print(f"    LLM chunking failed: {e}, using fallback")
+            error_msg = str(e).lower()
+            if "context" in error_msg or "length" in error_msg or "too long" in error_msg:
+                print(f"    LLM context limit exceeded, using fallback chunking")
+            else:
+                print(f"    LLM chunking failed: {e}, using fallback")
             return self._fallback_split(section_text)
 
     def _parse_split_points(self, response: str) -> List[int]:

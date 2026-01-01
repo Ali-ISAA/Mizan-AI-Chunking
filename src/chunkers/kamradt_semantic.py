@@ -17,7 +17,8 @@ class KamradtSemanticChunker(BaseChunker):
     def __init__(self, chunk_size: int = 512, chunk_overlap: int = 0,
                  breakpoint_percentile: int = 95,
                  embedder_provider: Optional[str] = None,
-                 embedder_model: Optional[str] = None):
+                 embedder_model: Optional[str] = None,
+                 base_url: Optional[str] = None):
         """
         Initialize Kamradt semantic chunker
 
@@ -33,6 +34,8 @@ class KamradtSemanticChunker(BaseChunker):
             Embedder provider (loads from config if None)
         embedder_model : str, optional
             Embedder model name (loads from config if None)
+        base_url : str, optional
+            Base URL for Ollama embedder
         """
         super().__init__(chunk_size, chunk_overlap)
 
@@ -44,11 +47,15 @@ class KamradtSemanticChunker(BaseChunker):
         self.embedder_model = embedder_model or config.embedding_model
         self.embedding_dimension = config.embedding_dimension
 
-        # Initialize embedder
+        # Initialize embedder with optional base_url for Ollama
+        embedder_kwargs = {}
+        if base_url and self.embedder_provider == "ollama":
+            embedder_kwargs["base_url"] = base_url
         self.embedder = get_embedder(
             self.embedder_provider,
             self.embedder_model,
-            self.embedding_dimension
+            self.embedding_dimension,
+            **embedder_kwargs
         )
 
     def chunk(self, text: str, metadata: Optional[Dict] = None) -> List[Dict]:

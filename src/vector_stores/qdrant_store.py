@@ -2,7 +2,7 @@
 Qdrant vector store implementation
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import uuid
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -17,7 +17,7 @@ from ..utils.config import get_config
 class QdrantStore(BaseVectorStore):
     """Qdrant vector store implementation"""
 
-    def __init__(self, collection_name: str, dimension: int):
+    def __init__(self, collection_name: str, dimension: int, url: str = None, api_key: str = None, **kwargs):
         """
         Initialize Qdrant store
 
@@ -27,21 +27,31 @@ class QdrantStore(BaseVectorStore):
             Name of the collection
         dimension : int
             Dimension of embeddings
+        url : str, optional
+            Qdrant server URL (overrides config if provided)
+        api_key : str, optional
+            Qdrant API key (overrides config if provided)
+        **kwargs
+            Additional arguments (ignored for compatibility)
         """
         super().__init__(collection_name, dimension)
 
-        # Load configuration
+        # Load configuration as fallback
         config = get_config()
+
+        # Use provided values or fall back to config
+        qdrant_url = url or config.qdrant_url
+        qdrant_api_key = api_key or config.qdrant_api_key
 
         # Initialize Qdrant client
         try:
-            if config.qdrant_api_key:
+            if qdrant_api_key:
                 self.client = QdrantClient(
-                    url=config.qdrant_url,
-                    api_key=config.qdrant_api_key
+                    url=qdrant_url,
+                    api_key=qdrant_api_key
                 )
             else:
-                self.client = QdrantClient(url=config.qdrant_url)
+                self.client = QdrantClient(url=qdrant_url)
         except Exception as e:
             raise ConnectionError(f"Failed to initialize Qdrant client: {str(e)}")
 
@@ -162,25 +172,26 @@ class QdrantStore(BaseVectorStore):
                 if conditions:
                     query_filter = Filter(must=conditions)
 
-            # Perform search
-            results = self.client.search(
+            # Perform search using query_points (qdrant-client >= 1.16)
+            response = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_embedding,
+                query=query_embedding,
                 limit=top_k,
-                query_filter=query_filter
+                query_filter=query_filter,
+                with_payload=True,
             )
 
             # Format results
             formatted_results = []
-            for result in results:
-                payload = result.payload.copy()
+            for point in response.points:
+                payload = point.payload.copy() if point.payload else {}
                 text = payload.pop('text', '')
 
                 formatted_results.append({
                     'text': text,
                     'metadata': payload,
-                    'score': result.score,
-                    'id': result.id
+                    'score': point.score,
+                    'id': str(point.id)
                 })
 
             return formatted_results
@@ -217,3 +228,104 @@ class QdrantStore(BaseVectorStore):
         except Exception as e:
             # Collection might not exist
             return 0
+
+    def scroll(self, offset: int = 0, limit: int = 50,
+               filters: Optional[Dict] = None) -> Tuple[List[Dict], int]:
+        """
+        Paginate through all vectors in collection.
+
+        Parameters:
+        -----------
+        offset : int
+            Number of records to skip
+        limit : int
+            Maximum number of records to return
+        filters : Dict, optional
+            Metadata filters
+
+        Returns:
+        --------
+        Tuple[List[Dict], int]
+            (results, total_count)
+        """
+        try:
+            # Build filter if provided
+            query_filter = None
+            if filters:
+                conditions = []
+                for key, value in filters.items():
+                    conditions.append(
+                        FieldCondition(
+                            key=key,
+                            match=MatchValue(value=value)
+                        )
+                    )
+                if conditions:
+                    query_filter = Filter(must=conditions)
+
+            # Get total count
+            total = self.get_count()
+
+            # Qdrant scroll returns all points, we need to handle offset/limit manually
+            # For better performance with large collections, use scroll with offset
+            records, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=query_filter,
+                limit=limit,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            # Format results
+            formatted_results = []
+            for record in records:
+                payload = record.payload.copy() if record.payload else {}
+                text = payload.pop('text', '')
+
+                formatted_results.append({
+                    'id': str(record.id),
+                    'text': text,
+                    'metadata': payload,
+                })
+
+            return formatted_results, total
+        except Exception as e:
+            raise RuntimeError(f"Failed to scroll: {str(e)}")
+
+    def get_by_id(self, point_id: str) -> Optional[Dict]:
+        """
+        Get a single vector by its ID.
+
+        Parameters:
+        -----------
+        point_id : str
+            The vector/point ID
+
+        Returns:
+        --------
+        Optional[Dict]
+            Vector data with id, text, metadata, or None if not found
+        """
+        try:
+            results = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=[point_id],
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            if not results:
+                return None
+
+            record = results[0]
+            payload = record.payload.copy() if record.payload else {}
+            text = payload.pop('text', '')
+
+            return {
+                'id': str(record.id),
+                'text': text,
+                'metadata': payload,
+            }
+        except Exception as e:
+            raise RuntimeError(f"Failed to get point: {str(e)}")
