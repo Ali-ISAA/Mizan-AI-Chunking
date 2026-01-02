@@ -36,12 +36,19 @@ class QdrantStore(BaseVectorStore):
         """
         super().__init__(collection_name, dimension)
 
-        # Load configuration as fallback
-        config = get_config()
-
-        # Use provided values or fall back to config
-        qdrant_url = url or config.qdrant_url
-        qdrant_api_key = api_key or config.qdrant_api_key
+        # Use provided values or fall back to config/defaults
+        if url:
+            qdrant_url = url
+            qdrant_api_key = api_key
+        else:
+            try:
+                config = get_config()
+                qdrant_url = config.qdrant_url
+                qdrant_api_key = api_key or config.qdrant_api_key
+            except (ValueError, Exception):
+                # Fallback to defaults if config validation fails
+                qdrant_url = "http://localhost:6333"
+                qdrant_api_key = api_key
 
         # Initialize Qdrant client
         try:
@@ -172,10 +179,10 @@ class QdrantStore(BaseVectorStore):
                 if conditions:
                     query_filter = Filter(must=conditions)
 
-            # Perform search using query_points (qdrant-client >= 1.16)
-            response = self.client.query_points(
+            # Perform search
+            results = self.client.search(
                 collection_name=self.collection_name,
-                query=query_embedding,
+                query_vector=query_embedding,
                 limit=top_k,
                 query_filter=query_filter,
                 with_payload=True,
@@ -183,7 +190,7 @@ class QdrantStore(BaseVectorStore):
 
             # Format results
             formatted_results = []
-            for point in response.points:
+            for point in results:
                 payload = point.payload.copy() if point.payload else {}
                 text = payload.pop('text', '')
 

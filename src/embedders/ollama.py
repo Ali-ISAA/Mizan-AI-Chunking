@@ -13,7 +13,7 @@ class OllamaEmbedder(BaseEmbedder):
     """Ollama embedding implementation"""
 
     def __init__(self, model_name: str = "nomic-embed-text",
-                 dimension: int = 768, base_url: Optional[str] = None):
+                 dimension: int = 768, base_url: Optional[str] = None, **kwargs):
         """
         Initialize Ollama embedder
 
@@ -25,6 +25,8 @@ class OllamaEmbedder(BaseEmbedder):
             Embedding dimension
         base_url : str, optional
             Ollama server URL (default: http://localhost:11434)
+        **kwargs
+            Additional arguments (ignored - Ollama doesn't use api_key etc.)
         """
         super().__init__(model_name, dimension)
 
@@ -33,9 +35,16 @@ class OllamaEmbedder(BaseEmbedder):
         except ImportError:
             raise ImportError("ollama package required. Install: pip install ollama")
 
-        # Get config
-        config = get_config()
-        self.base_url = base_url or config.ollama_base_url
+        # Use provided base_url or fall back to config/default
+        if base_url:
+            self.base_url = base_url
+        else:
+            try:
+                config = get_config()
+                self.base_url = config.ollama_base_url
+            except (ValueError, Exception):
+                # Fallback to default if config validation fails
+                self.base_url = "http://localhost:11434"
 
         # Initialize client
         self.client = ollama.Client(host=self.base_url)
